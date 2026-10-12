@@ -30,6 +30,11 @@ export function App() {
           onSettings={r.updateSettings}
           onStart={r.start}
           onLeave={r.leave}
+          strokes={r.strokes}
+          generation={r.generation}
+          onStroke={r.sendStroke}
+          onUndo={r.undo}
+          onClear={r.clear}
         />
       ) : (
         <Home busy={r.busy} connected={r.connected} onCreate={r.create} onJoin={r.join} />

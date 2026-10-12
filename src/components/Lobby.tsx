@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import type { RoomSettings } from '../generated/contract';
+import type { RoomSettings, Stroke } from '../generated/contract';
+import { Board } from './Board';
 import type { RoomSnapshot } from '../hooks/useRoom';
 import { Avatar } from './Avatar';
 
@@ -10,6 +11,11 @@ interface Props {
   onSettings: (patch: Partial<RoomSettings>) => void;
   onStart: () => void;
   onLeave: () => void;
+  strokes: Stroke[];
+  generation: number;
+  onStroke: (s: Stroke) => void;
+  onUndo: () => void;
+  onClear: () => void;
 }
 
 const NUMERIC = [
@@ -18,7 +24,10 @@ const NUMERIC = [
   { key: 'maxPlayers', label: 'Max players', min: 2, max: 16, step: 1 },
 ] as const;
 
-export function Lobby({ room, isHost, busy, onSettings, onStart, onLeave }: Props) {
+export function Lobby({
+  room, isHost, busy, onSettings, onStart, onLeave,
+  strokes, generation, onStroke, onUndo, onClear,
+}: Props) {
   const [copied, setCopied] = useState(false);
   const present = room.players.filter((p) => p.connected).length;
 
@@ -92,6 +101,18 @@ export function Lobby({ room, isHost, busy, onSettings, onStart, onLeave }: Prop
           </label>
           {!isHost && <p className="muted">Only the host can change settings.</p>}
         </div>
+      </div>
+
+      <div className="card">
+        <h3>Warm-up canvas <span className="muted">— anyone can draw until the game starts</span></h3>
+        <Board
+          strokes={strokes}
+          generation={generation}
+          canDraw
+          onStroke={onStroke}
+          onUndo={onUndo}
+          onClear={onClear}
+        />
       </div>
 
       <div className="card">
