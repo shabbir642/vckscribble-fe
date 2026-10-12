@@ -7,13 +7,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # The contract's source of truth lives in the private backend repo, so CI
+      # checks it out as a sibling. Needs a secret BE_REPO_TOKEN: a PAT (or
+      # fine-grained token) with read access to vckscribble-be.
+      - uses: actions/checkout@v4
+        with:
+          repository: shabbir642/vckscribble-be
+          token: ${{ secrets.BE_REPO_TOKEN }}
+          path: be-src
+          sparse-checkout: src/contract
+          sparse-checkout-cone-mode: false
+
       - uses: pnpm/action-setup@v4
         with: { version: 10 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      # Fails if the vendored contract has drifted from vckscribble-be@main.
+
+      # Fails if the vendored contract has drifted from the backend's copy.
       # This is what replaces the shared workspace package the repo split removed.
       - run: pnpm contract:check
+        env:
+          CONTRACT_SOURCE: be-src/src/contract/index.ts
+
       - run: pnpm typecheck
-      - run: pnpm build
+      - run: CONTRACT_SOURCE=be-src/src/contract/index.ts pnpm build

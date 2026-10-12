@@ -28,5 +28,10 @@ pnpm contract:sync    # regenerate (commit the result)
 pnpm contract:check   # fail if drifted — runs in CI and in `pnpm build`
 ```
 
-Resolution order: `$CONTRACT_SOURCE` → sibling `../be` checkout → the BE repo's
-raw GitHub URL. So it works whether or not you have both repos cloned.
+Resolution order: `$CONTRACT_SOURCE` → sibling `../be` checkout → the GitHub
+contents API. So it works whether or not you have both repos cloned.
+
+**CI needs a secret.** `vckscribble-be` is private, so CI checks it out as a
+sibling using `secrets.BE_REPO_TOKEN` — a PAT with read access to that repo.
+Without it, `contract:check` fails with a 404. (A `$CONTRACT_TOKEN` env var is
+honored as an alternative for the API path.)
