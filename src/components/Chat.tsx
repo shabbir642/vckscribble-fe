@@ -21,7 +21,7 @@ export function Chat({ messages, canGuess, placeholder, closeHint, onGuess }: Pr
     <div className="card chat">
       <div className="messages">
         {messages.map((m) => (
-          <div key={m.id} className={`msg ${m.channel}`}>
+          <div key={m.id} className={`msg ${m.channel} tone-${m.tone ?? 'neutral'}`}>
             {m.playerName && <span className="who">{m.playerName}</span>}
             <span>{m.text}</span>
           </div>

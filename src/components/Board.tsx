@@ -28,6 +28,7 @@ export function Board({ strokes, generation, canDraw, onStroke, onUndo, onClear 
         onUndo();
       } else if (e.key === 'b') setTool('brush');
       else if (e.key === 'e') setTool('eraser');
+      else if (e.key === 'f') setTool('fill');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -77,7 +78,7 @@ export function Board({ strokes, generation, canDraw, onStroke, onUndo, onClear 
             <button className={tool === 'eraser' ? 'on' : ''} onClick={() => setTool('eraser')} title="Eraser (E)">
               Eraser
             </button>
-            <button className={tool === 'fill' ? 'on' : ''} onClick={() => setTool('fill')} title="Fill background">
+            <button className={tool === 'fill' ? 'on' : ''} onClick={() => setTool('fill')} title="Fill enclosed area (F)">
               Fill
             </button>
             <button onClick={onUndo} title="Undo (Cmd/Ctrl+Z)">Undo</button>

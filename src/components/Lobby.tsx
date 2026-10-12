@@ -29,16 +29,37 @@ export function Lobby({
   strokes, generation, onStroke, onUndo, onClear,
 }: Props) {
   const [copied, setCopied] = useState(false);
+  const [showLink, setShowLink] = useState(false);
   const present = room.players.filter((p) => p.connected).length;
 
+  const inviteUrl = `${location.origin}/?room=${room.roomCode}`;
+
+  /**
+   * navigator.clipboard only exists in a secure context, so over plain http on
+   * a LAN address it is undefined and the old call threw before copying
+   * anything — the button looked dead. Fall back to a hidden textarea, and if
+   * even that fails, reveal the link so it can be copied by hand.
+   */
   const share = async () => {
-    const url = `${location.origin}/?room=${room.roomCode}`;
     try {
-      await navigator.clipboard.writeText(url);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(inviteUrl);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = inviteUrl;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (!ok) throw new Error('execCommand refused');
+      }
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {
-      /* clipboard blocked — the code is on screen anyway */
+      setShowLink(true);
     }
   };
 
@@ -48,6 +69,9 @@ export function Lobby({
         <div>
           <span className="tag">Room</span>
           <h2 className="code">{room.roomCode}</h2>
+          {showLink && (
+            <input className="invite" readOnly value={inviteUrl} onFocus={(e) => e.target.select()} />
+          )}
         </div>
         <div className="row">
           <button onClick={share}>{copied ? 'Copied ✓' : 'Copy invite link'}</button>

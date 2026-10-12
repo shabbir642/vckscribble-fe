@@ -4,6 +4,7 @@ import { Board } from './Board';
 import { Chat } from './Chat';
 import { Scores } from './Scores';
 import { WordPicker } from './WordPicker';
+import { Confetti } from './Confetti';
 
 interface Props {
   room: RoomSnapshot;
@@ -90,10 +91,26 @@ export function Game(p: Props) {
 
       {phase === 'finished' && p.finalScores && (
         <div className="card podium">
+          <Confetti />
+          {(() => {
+            const ranked = [...p.finalScores!].sort((a, b) => b.score - a.score);
+            const top = ranked[0]!.score;
+            // A draw is possible, so announce every player on the top score
+            // rather than whoever sorted first.
+            const champs = ranked.filter((x) => x.score === top);
+            return (
+              <p className="winner-banner">
+                {champs.length > 1
+                  ? `It's a tie — ${champs.map((c) => c.name).join(' & ')}!`
+                  : `${champs[0]!.name} wins!`}
+              </p>
+            );
+          })()}
           <h3>Final scores</h3>
           <ol>
-            {[...p.finalScores].sort((a, b) => b.score - a.score).map((pl, i) => (
-              <li key={pl.id} className={i === 0 ? 'winner' : ''}>
+            {[...p.finalScores].sort((a, b) => b.score - a.score).map((pl, _i, arr) => (
+              <li key={pl.id} className={pl.score === arr[0]!.score ? 'winner' : ''}>
+                <span>{pl.score === arr[0]!.score ? <span className="crown">👑</span> : null}</span>
                 <span>{pl.name}</span>
                 <span className="score">{pl.score}</span>
               </li>
