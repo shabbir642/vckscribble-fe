@@ -10,6 +10,7 @@ import type {
 } from '../generated/contract';
 import { socket } from '../lib/socket';
 import { clearSession, loadSession, saveSession } from '../lib/session';
+import { sfx } from '../lib/sound';
 
 export interface RoomSnapshot {
   roomCode: string;
@@ -104,17 +105,31 @@ export function useRoom(): UseRoom {
     const onPlayers = (p: { players: Player[] }) =>
       setRoom((r) => (r ? { ...r, players: p.players } : r));
     const onRound = (p: RoundState) => {
-      setRoom((r) => (r ? { ...r, round: p } : r));
+      setRoom((r) => {
+        if (r) {
+          if (p.phase === 'reveal' && r.round.phase !== 'reveal') sfx.roundEnd();
+          if (p.phase === 'finished' && r.round.phase !== 'finished') sfx.finish();
+          // Your own solve: in the new guessed list but not the old one.
+          const was = r.round.guessedPlayerIds.includes(r.youId);
+          if (!was && p.guessedPlayerIds.includes(r.youId)) sfx.correct();
+        }
+        return r ? { ...r, round: p } : r;
+      });
       // Options and the assigned word are per-turn; clear them on every change
       // so a stale picker can never linger into the next phase.
       if (p.phase !== 'selecting') setWordOptions(null);
       if (p.phase !== 'drawing') setAssignedWord(null);
       if (p.phase === 'lobby') setFinalScores(null);
     };
-    const onOptions = (p: { choices: WordChoice[]; allowCustom: boolean }) =>
+    const onOptions = (p: { choices: WordChoice[]; allowCustom: boolean }) => {
       setWordOptions(p);
+      sfx.yourTurn();
+    };
     const onAssigned = (p: { text: string }) => setAssignedWord(p.text);
-    const onTick = (p: { secondsLeft: number }) => setSecondsLeft(p.secondsLeft);
+    const onTick = (p: { secondsLeft: number }) => {
+      setSecondsLeft(p.secondsLeft);
+      if (p.secondsLeft > 0 && p.secondsLeft <= 5) sfx.tick();
+    };
     const onHintMask = (p: { maskedWord: string }) =>
       setRoom((r) => (r ? { ...r, round: { ...r.round, maskedWord: p.maskedWord } } : r));
     const onClose = (p: { text: string }) => {
@@ -125,8 +140,10 @@ export function useRoom(): UseRoom {
       setRoom((r) => (r ? { ...r, players: p.players } : r));
       if (p.final) setFinalScores(p.players);
     };
-    const onMessage = (m: ChatMessage) =>
+    const onMessage = (m: ChatMessage) => {
+      if (m.channel === 'system' && m.text.includes('guessed it')) sfx.someoneGuessed();
       setMessages((prev) => [...prev, m].slice(-MAX_MESSAGES));
+    };
 
     // Upsert by id: a drag streams under one id as it grows.
     const onStroke = (p: { stroke: Stroke }) =>

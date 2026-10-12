@@ -24,6 +24,8 @@ interface Props {
   onUndo: () => void;
   onClear: () => void;
   onLeave: () => void;
+  isHost: boolean;
+  onPlayAgain: () => void;
 }
 
 export function Game(p: Props) {
@@ -97,6 +99,13 @@ export function Game(p: Props) {
               </li>
             ))}
           </ol>
+          {p.isHost ? (
+            <button className="primary wide" onClick={p.onPlayAgain} disabled={p.busy}>
+              Play again
+            </button>
+          ) : (
+            <p className="muted center">Waiting for the host to start another game.</p>
+          )}
         </div>
       )}
 

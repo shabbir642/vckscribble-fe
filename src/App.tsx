@@ -1,10 +1,13 @@
 import { Game } from './components/Game';
 import { Home } from './components/Home';
 import { Lobby } from './components/Lobby';
+import { useState } from 'react';
 import { useRoom } from './hooks/useRoom';
+import { soundEnabled, toggleSound } from './lib/sound';
 
 export function App() {
   const r = useRoom();
+  const [sound, setSound] = useState(soundEnabled);
   const inGame = r.room && r.room.round.phase !== 'lobby';
 
   return (
@@ -14,10 +17,20 @@ export function App() {
           <h1>vckscribble</h1>
           <p className="sub">Draw the corporate slang. Guess the corporate slang.</p>
         </div>
-        <span
-          className={`dot ${r.connected ? 'ok' : 'bad'}`}
-          title={r.connected ? 'connected' : 'offline'}
-        />
+        <div className="row">
+          <button
+            className="small"
+            onClick={() => setSound(toggleSound())}
+            aria-pressed={sound}
+            title={sound ? 'Mute' : 'Unmute'}
+          >
+            {sound ? 'Sound on' : 'Sound off'}
+          </button>
+          <span
+            className={`dot ${r.connected ? 'ok' : 'bad'}`}
+            title={r.connected ? 'connected' : 'offline'}
+          />
+        </div>
       </header>
 
       {r.error && (
@@ -67,6 +80,8 @@ export function App() {
           onUndo={r.undo}
           onClear={r.clear}
           onLeave={r.leave}
+          isHost={r.isHost}
+          onPlayAgain={r.start}
         />
       )}
 
