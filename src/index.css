@@ -113,3 +113,38 @@ ul.players li.away { opacity: 0.45; }
 .sizer span { display: block; background: var(--ink); border-radius: 50%; }
 .sizer.on, button.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .tools .row { flex-wrap: wrap; }
+
+.play { display: grid; grid-template-columns: 1fr 300px; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .play { grid-template-columns: 1fr; } }
+.side { display: grid; gap: 16px; }
+
+.status { position: sticky; top: 0; z-index: 5; }
+.center-word { flex: 1; text-align: center; }
+.timer { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 1.15rem; }
+.solution { font-size: 1.2rem; font-weight: 600; color: var(--accent); }
+.score { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; }
+.ok-tag { color: var(--accent); border-color: var(--accent); }
+
+.picker .choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0; }
+@media (max-width: 600px) { .picker .choices { grid-template-columns: 1fr; } }
+.choice { display: grid; gap: 3px; padding: 14px 10px; text-align: center; }
+.choice strong { font-size: 1.05rem; }
+button.link { background: none; border: none; color: var(--accent); padding: 0; text-decoration: underline; }
+button.small, .small { font-size: 0.85rem; }
+
+.chat { display: grid; gap: 8px; }
+.messages { max-height: 280px; overflow-y: auto; display: grid; gap: 5px; align-content: start; }
+.msg { font-size: 0.9rem; display: flex; gap: 6px; }
+.msg .who { color: var(--muted); font-weight: 600; }
+.msg.system { color: var(--muted); font-style: italic; }
+.msg.post-guess { color: var(--accent); }
+.chat input { width: 100%; }
+.close-hint {
+  font-size: 0.85rem; padding: 5px 9px; border-radius: 7px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent);
+}
+
+.podium ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; counter-reset: rank; }
+.podium li { display: flex; gap: 10px; align-items: center; }
+.podium li::before { counter-increment: rank; content: counter(rank) '.'; color: var(--muted); width: 22px; }
+.podium li.winner { font-weight: 700; color: var(--accent); }
