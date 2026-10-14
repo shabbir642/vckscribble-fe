@@ -5,6 +5,7 @@ import { Chat } from './Chat';
 import type { RoomSnapshot } from '../hooks/useRoom';
 import { AVATARS, Avatar } from './Avatar';
 import { InviteLink } from './InviteLink';
+import { RoomSettingsPanel } from './RoomSettingsPanel';
 
 interface Props {
   room: RoomSnapshot;
@@ -13,7 +14,8 @@ interface Props {
   /** False while reconnecting: drawing pauses until the seat is back. */
   online: boolean;
   messages: ChatMessage[];
-  onSettings: (patch: Partial<RoomSettings>) => void;
+  onSettings: (patch: Partial<Omit<RoomSettings, 'customWordCount'>>) => void;
+  onCustomWords: (text: string) => Promise<Result<{ accepted: number; rejected: string[] }>>;
   onStart: () => void;
   onLeave: () => void;
   onDrawStart: (s: Stroke) => void;
@@ -24,14 +26,9 @@ interface Props {
   onGuess: (text: string) => void;
 }
 
-const NUMERIC = [
-  { key: 'rounds', label: 'Rounds', min: 1, max: 10, step: 1 },
-  { key: 'drawSeconds', label: 'Draw time (seconds)', min: 30, max: 180, step: 10 },
-  { key: 'maxPlayers', label: 'Max players', min: 2, max: 16, step: 1 },
-] as const;
 
 export function Lobby({
-  room, isHost, busy, online, messages, onSettings, onStart, onLeave,
+  room, isHost, busy, online, messages, onSettings, onCustomWords, onStart, onLeave,
   onDrawStart, onDrawAppend, onUndo, onClear, onProfile, onGuess,
 }: Props) {
   const present = room.players.filter((p) => p.connected).length;
@@ -169,38 +166,15 @@ export function Lobby({
           )}
         </div>
 
-        <div className="card">
-          <h3>Game settings</h3>
-          {NUMERIC.map((s) => (
-            <label className="field inline" key={s.key}>
-              <span>{s.label}</span>
-              <input
-                type="number"
-                disabled={!isHost || busy}
-                min={s.min}
-                max={s.max}
-                step={s.step}
-                value={room.settings[s.key]}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  if (Number.isFinite(v)) onSettings({ [s.key]: v });
-                }}
-              />
-            </label>
-          ))}
-          <label className="field inline">
-            <span>Drawers can write their own word</span>
-            <input
-              type="checkbox"
-              disabled={!isHost || busy}
-              checked={room.settings.allowCustomWords}
-              onChange={(e) => onSettings({ allowCustomWords: e.target.checked })}
-            />
-          </label>
-          {!isHost && (
-            <p className="muted small">{host ? `${host.name} picks the settings.` : 'The host picks the settings.'}</p>
-          )}
-        </div>
+        <RoomSettingsPanel
+          settings={room.settings}
+          isHost={isHost}
+          busy={busy}
+          hostName={host?.name ?? null}
+          hostWords={room.hostWords}
+          onSettings={onSettings}
+          onCustomWords={onCustomWords}
+        />
 
         <Chat
           messages={messages}

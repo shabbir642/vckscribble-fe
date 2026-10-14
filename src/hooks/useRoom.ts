@@ -14,6 +14,7 @@ import {
   clearSession,
   deviceId,
   loadSession,
+  loadTabSession,
   roomFromUrl,
   saveProfile,
   saveSession,
@@ -28,6 +29,8 @@ export interface RoomSnapshot {
   settings: RoomSettings;
   round: RoundState;
   youId: string;
+  /** The custom word list: only ever present for the host. */
+  hostWords: string[] | null;
 }
 
 export interface UseRoom {
@@ -53,8 +56,12 @@ export interface UseRoom {
   peek: (roomCode: string) => Promise<Result<RoomPreview>>;
   /** Rename / re-avatar yourself; lobby only. */
   updateProfile: (patch: { name?: string; avatar?: number }) => Promise<Result>;
-  updateSettings: (patch: Partial<RoomSettings>) => Promise<void>;
+  updateSettings: (patch: Partial<Omit<RoomSettings, 'customWordCount'>>) => Promise<void>;
+  /** Host: replace the custom word list. */
+  setCustomWords: (text: string) => Promise<Result<{ accepted: number; rejected: string[] }>>;
   start: () => Promise<void>;
+  /** Host: stop the game, or leave the podium, and go back to the lobby. */
+  restart: () => Promise<void>;
   chooseWord: (wordId: number) => Promise<void>;
   customWord: (text: string) => Promise<void>;
   sendGuess: (text: string) => void;
@@ -84,6 +91,8 @@ export function useRoom(): UseRoom {
   const [error, setError] = useState<string | null>(null);
   /** Guards against a second resume while one is still in flight. */
   const resuming = useRef(false);
+  /** Set once another tab was found holding the shared seat: don't ask again. */
+  const sharedSeatTaken = useRef(false);
   /** Set between a successful resume and the drawing resync that follows it. */
   const awaitingSync = useRef(false);
   /** Whether this page currently shows a room, readable from socket handlers. */
@@ -123,7 +132,13 @@ export function useRoom(): UseRoom {
       if (resuming.current) return;
       resuming.current = true;
       setReconnecting(true);
-      socket.emit('room:resume', s, (r) => {
+      // Only a tab resuming its own seat may take it from another connection.
+      const takeover = loadTabSession()?.token === s.token;
+      if (!takeover && sharedSeatTaken.current) {
+        setReconnecting(false);
+        return;
+      }
+      socket.emit('room:resume', { ...s, takeover }, (r) => {
         resuming.current = false;
         if (r.ok) {
           // The seat is back, but the drawing resync follows the ack: stay in
@@ -139,6 +154,14 @@ export function useRoom(): UseRoom {
           return;
         }
         setReconnecting(false);
+        if (r.code === 'SEAT_IN_USE') {
+          sharedSeatTaken.current = true;
+          // Another tab is playing this seat. Leave it alone and start this
+          // tab at the home screen, where it can join as someone else.
+          if (inRoom.current) resetRoom();
+          setError('You’re already in this game in another tab. Join here with a different name.');
+          return;
+        }
         // The room is gone — a server restart, or it was collected. Leave it
         // rather than showing a game that will never move again.
         clearSession();
@@ -160,6 +183,7 @@ export function useRoom(): UseRoom {
       settings: RoomSettings;
       round: RoundState;
       you: { playerId: string };
+      hostWords?: string[];
     }) => {
       setRoom({
         roomCode: p.roomCode,
@@ -167,6 +191,7 @@ export function useRoom(): UseRoom {
         settings: p.settings,
         round: p.round,
         youId: p.you.playerId,
+        hostWords: p.hostWords ?? null,
       });
     };
     const onPlayers = (p: { players: Player[] }) =>
@@ -353,14 +378,26 @@ export function useRoom(): UseRoom {
   );
 
   const updateSettings = useCallback(
-    async (patch: Partial<RoomSettings>) => {
+    async (patch: Partial<Omit<RoomSettings, 'customWordCount'>>) => {
       await request((ack) => socket.emit('room:settings', patch, ack));
     },
     [request],
   );
 
+  const setCustomWords = useCallback(
+    (text: string) =>
+      request<{ accepted: number; rejected: string[] }>((ack) =>
+        socket.emit('room:customWords', { text }, ack),
+      ),
+    [request],
+  );
+
   const start = useCallback(async () => {
     await request((ack) => socket.emit('room:start', {}, ack));
+  }, [request]);
+
+  const restart = useCallback(async () => {
+    await request((ack) => socket.emit('room:restart', {}, ack));
   }, [request]);
 
   const chooseWord = useCallback(
@@ -439,7 +476,9 @@ export function useRoom(): UseRoom {
     peek,
     updateProfile,
     updateSettings,
+    setCustomWords,
     start,
+    restart,
     chooseWord,
     customWord,
     sendGuess,

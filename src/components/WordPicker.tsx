@@ -30,7 +30,7 @@ export function WordPicker({
         {choices.map((c) => (
           <button key={c.id} className="choice" disabled={busy} onClick={() => onChoose(c.id)}>
             <span>{c.text}</span>
-            <span className="level">{DIFFICULTY[c.drawability]}</span>
+            <span className="level">{c.id < 0 ? 'Host’s word' : DIFFICULTY[c.drawability]}</span>
           </button>
         ))}
       </div>

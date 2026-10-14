@@ -45,12 +45,52 @@ function write(key: string, value: unknown): void {
   }
 }
 
-export function loadSession(): Session | null {
-  const v = read<Partial<Session>>(SESSION_KEY);
-  return v?.roomCode && v.token ? { roomCode: v.roomCode, token: v.token } : null;
+const asSession = (v: Partial<Session> | null): Session | null =>
+  v?.roomCode && v.token ? { roomCode: v.roomCode, token: v.token } : null;
+
+/**
+ * The seat is kept twice: per tab (sessionStorage — survives a refresh, not
+ * shared with other tabs) and shared (localStorage — so reopening a closed tab
+ * still finds it). A tab resumes its own seat outright; a seat it only found
+ * in shared storage may be open in another tab, so it asks rather than takes.
+ */
+function readTab(): Session | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    return raw ? asSession(JSON.parse(raw) as Partial<Session>) : null;
+  } catch {
+    return null;
+  }
 }
-export const saveSession = (s: Session) => write(SESSION_KEY, s);
-export const clearSession = () => write(SESSION_KEY, null);
+
+/** This tab's own seat, if it has one. */
+export const loadTabSession = readTab;
+
+/** The seat to resume: this tab's own, else the last one played in this browser. */
+export function loadSession(): Session | null {
+  return readTab() ?? asSession(read<Partial<Session>>(SESSION_KEY));
+}
+
+export function saveSession(s: Session): void {
+  write(SESSION_KEY, s);
+  try {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
+  } catch {
+    /* non-fatal */
+  }
+}
+
+/** Forget this tab's seat — and the shared copy, if it was this same seat. */
+export function clearSession(): void {
+  const mine = readTab();
+  const shared = asSession(read<Partial<Session>>(SESSION_KEY));
+  if (!mine || shared?.token === mine.token) write(SESSION_KEY, null);
+  try {
+    sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 export function loadProfile(): Profile | null {
   const v = read<Partial<Profile>>(PROFILE_KEY);

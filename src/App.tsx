@@ -67,6 +67,7 @@ export function App() {
           online={r.connected && !r.reconnecting}
           messages={r.messages}
           onSettings={r.updateSettings}
+          onCustomWords={r.setCustomWords}
           onStart={r.start}
           onLeave={r.leave}
           onDrawStart={r.drawStart}
@@ -100,6 +101,7 @@ export function App() {
           onLeave={r.leave}
           isHost={r.isHost}
           onPlayAgain={r.start}
+          onRestart={r.restart}
         />
       )}
     </div>

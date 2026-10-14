@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { ChatMessage, Player, Stroke } from '../generated/contract';
 import type { RoomSnapshot } from '../hooks/useRoom';
 import { Avatar } from './Avatar';
@@ -6,6 +6,7 @@ import { Board } from './Board';
 import { Chat } from './Chat';
 import { Confetti } from './Confetti';
 import { InviteLink } from './InviteLink';
+import { Podium, rankPlayers } from './Podium';
 import { Scores } from './Scores';
 import { WordPicker } from './WordPicker';
 
@@ -31,6 +32,8 @@ interface Props {
   onLeave: () => void;
   isHost: boolean;
   onPlayAgain: () => void;
+  /** Host: back to the lobby, mid-game or from the podium. */
+  onRestart: () => void;
 }
 
 /** Letter counts per word of a masked phrase: "_ _ _   _ _" -> "3, 2". */
@@ -42,6 +45,25 @@ function wordLengths(masked: string): string {
 }
 
 const ranked = (players: Player[]) => [...players].sort((a, b) => b.score - a.score);
+
+/** Ending everyone's game is one click too many to leave unconfirmed. */
+function RestartButton({ onRestart }: { onRestart: () => void }) {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), 3000);
+    return () => clearTimeout(t);
+  }, [armed]);
+  return (
+    <button
+      className={`small ${armed ? 'accent' : ''}`}
+      onClick={() => (armed ? onRestart() : setArmed(true))}
+      title="End this game for everyone and go back to the lobby"
+    >
+      {armed ? 'Sure? Restart' : '↺ Restart'}
+    </button>
+  );
+}
 
 export function Game(p: Props) {
   const { room } = p;
@@ -179,31 +201,25 @@ export function Game(p: Props) {
       </div>
     );
   } else if (phase === 'finished' && p.finalScores) {
-    const order = ranked(p.finalScores);
-    const top = order[0]?.score ?? 0;
-    const champs = order.filter((x) => x.score === top);
+    const order = rankPlayers(p.finalScores);
+    const champs = order.filter((x) => x.rank === 1).map((x) => x.player.name);
     overlay = (
-      <div className="overlay">
+      <div className="overlay finale">
         <Confetti />
         <div className="overlay-body">
           <div className="winner-banner">
-            {champs.length > 1
-              ? `It’s a tie: ${champs.map((c) => c.name).join(' & ')}!`
-              : `${champs[0]?.name ?? 'Nobody'} wins!`}
+            {champs.length > 1 ? `It’s a tie: ${champs.join(' & ')}!` : `${champs[0] ?? 'Nobody'} wins!`}
           </div>
-          <ol className="podium-list">
-            {order.map((x, i) => (
-              <li key={x.id} className={x.score === top ? 'winner' : ''}>
-                <span>{x.score === top ? <span className="crown-bob">👑</span> : `#${i + 1}`}</span>
-                <span>{x.name}</span>
-                <span className="gain">{x.score}</span>
-              </li>
-            ))}
-          </ol>
+          <Podium players={p.finalScores} youId={room.youId} />
           {p.isHost ? (
-            <button className="primary big" onClick={p.onPlayAgain} disabled={p.busy}>
-              Play again
-            </button>
+            <div className="row" style={{ justifyContent: 'center' }}>
+              <button className="primary big" onClick={p.onPlayAgain} disabled={p.busy}>
+                Play again
+              </button>
+              <button className="big" onClick={p.onRestart} disabled={p.busy}>
+                Back to lobby
+              </button>
+            </div>
           ) : (
             <p className="muted">Waiting for the host to start another game…</p>
           )}
@@ -233,6 +249,7 @@ export function Game(p: Props) {
               🚩 Report
             </button>
           )}
+          {p.isHost && phase !== 'finished' && <RestartButton onRestart={p.onRestart} />}
           <InviteLink roomCode={room.roomCode} compact />
           <button className="small" onClick={p.onLeave}>Leave</button>
         </div>
