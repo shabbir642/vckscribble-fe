@@ -496,3 +496,36 @@ textarea {
 .podium .ranks li { grid-template-columns: 36px auto 1fr auto; }
 .podium .ranks li.me { background: var(--yellow-soft); }
 .podium .rank { font-family: var(--display); color: var(--ink-soft); }
+
+/* ------------------------------------------------------------- reactions */
+/* The layer passes every pointer through to the canvas; only the bar takes clicks. */
+.reactions { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.react-bar {
+  position: absolute; right: 12px; bottom: 12px; display: flex; gap: 8px;
+  pointer-events: auto;
+}
+.react { font-size: 1.15rem; padding: 7px 12px; background: var(--paper); }
+.react span { font-family: var(--display); font-size: 1rem; margin-left: 2px; }
+.react.on { background: var(--yellow); }
+.tally {
+  font-family: var(--display); font-weight: 600; background: var(--paper);
+  border: var(--outline); border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  padding: 6px 12px;
+}
+.reactions .float {
+  position: absolute; right: calc(40px + var(--x)); bottom: 64px;
+  display: grid; justify-items: center; font-size: 2.6rem; line-height: 1;
+  animation: float-up 1.8s ease-out both; animation-delay: calc(var(--d) * 60ms);
+  filter: drop-shadow(2px 2px 0 rgba(30, 27, 75, 0.35));
+}
+.reactions .float small {
+  font: 800 0.75rem var(--body); color: var(--ink); background: var(--paper);
+  border: 2px solid var(--ink); border-radius: 999px; padding: 1px 8px; margin-top: 2px;
+}
+.overlay .verdict { font-family: var(--display); font-size: 1.15rem; color: var(--paper); }
+@keyframes float-up {
+  0% { transform: translateY(10px) scale(0.6); opacity: 0; }
+  15% { transform: translateY(0) scale(1.15); opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: translateY(-160px) scale(1); opacity: 0; }
+}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   ChatMessage,
   Player,
+  Reaction,
   Result,
   RoomPreview,
   RoomSettings,
@@ -37,6 +38,11 @@ export interface UseRoom {
   connected: boolean;
   room: RoomSnapshot | null;
   messages: ChatMessage[];
+  /** Reactions just made, for the floating 👍/👎 over the canvas. */
+  reactionFeed: { id: number; reaction: Reaction; name: string }[];
+  /** This player's own vote on the current drawing. */
+  myReaction: Reaction | null;
+  react: (reaction: Reaction) => void;
   /** True while re-taking a seat: on page load, or after a dropped connection. */
   reconnecting: boolean;
   /** Drawer only: the three on offer, plus whether a custom word is allowed. */
@@ -81,6 +87,8 @@ export function useRoom(): UseRoom {
   const [room, setRoom] = useState<RoomSnapshot | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [reconnecting, setReconnecting] = useState(false);
+  const [reactionFeed, setReactionFeed] = useState<UseRoom['reactionFeed']>([]);
+  const [myReaction, setMyReaction] = useState<Reaction | null>(null);
   const [wordOptions, setWordOptions] =
     useState<{ choices: WordChoice[]; allowCustom: boolean } | null>(null);
   const [assignedWord, setAssignedWord] = useState<string | null>(null);
@@ -197,6 +205,8 @@ export function useRoom(): UseRoom {
     const onPlayers = (p: { players: Player[] }) =>
       setRoom((r) => (r ? { ...r, players: p.players } : r));
     const onRound = (p: RoundState) => {
+      // A new turn starts with fresh votes.
+      if (p.phase !== 'drawing') setMyReaction(null);
       setRoom((r) => {
         if (r) {
           if (p.phase === 'reveal' && r.round.phase !== 'reveal') sfx.roundEnd();
@@ -237,6 +247,14 @@ export function useRoom(): UseRoom {
       setMessages((prev) => [...prev, m].slice(-MAX_MESSAGES));
     };
 
+    let feedId = 0;
+    const onReaction = (p: { playerName: string; reaction: Reaction; likes: number; dislikes: number }) => {
+      setRoom((r) => (r ? { ...r, round: { ...r.round, likes: p.likes, dislikes: p.dislikes } } : r));
+      const id = ++feedId;
+      setReactionFeed((f) => [...f.slice(-11), { id, reaction: p.reaction, name: p.playerName }]);
+      setTimeout(() => setReactionFeed((f) => f.filter((x) => x.id !== id)), 1800);
+    };
+
     // Drawing traffic goes straight to the canvas's store, never to React.
     const onStroke = (p: { stroke: Stroke }) => strokeStore.put(p.stroke);
     const onPoints = (p: { strokeId: string; points: number[] }) =>
@@ -266,6 +284,7 @@ export function useRoom(): UseRoom {
     socket.on('game:scores', onScores);
     socket.on('draw:stroke', onStroke);
     socket.on('draw:points', onPoints);
+    socket.on('draw:reaction', onReaction);
     socket.on('draw:undo', onUndo);
     socket.on('draw:clear', onClear);
     socket.on('draw:sync', onSync);
@@ -288,6 +307,7 @@ export function useRoom(): UseRoom {
       socket.off('game:scores', onScores);
       socket.off('draw:stroke', onStroke);
       socket.off('draw:points', onPoints);
+      socket.off('draw:reaction', onReaction);
       socket.off('draw:undo', onUndo);
       socket.off('draw:clear', onClear);
       socket.off('draw:sync', onSync);
@@ -438,6 +458,12 @@ export function useRoom(): UseRoom {
     if (socket.connected) socket.emit('draw:points', { id, points });
   }, []);
 
+  const react = useCallback((reaction: Reaction) => {
+    if (!socket.connected) return;
+    setMyReaction(reaction);
+    socket.emit('draw:react', { reaction });
+  }, []);
+
   const undo = useCallback(() => {
     if (socket.connected) socket.emit('draw:undo', {});
   }, []);
@@ -461,6 +487,9 @@ export function useRoom(): UseRoom {
     connected,
     room,
     messages,
+    reactionFeed,
+    myReaction,
+    react,
     reconnecting,
     wordOptions,
     assignedWord,

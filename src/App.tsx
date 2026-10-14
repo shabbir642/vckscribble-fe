@@ -102,6 +102,9 @@ export function App() {
           isHost={r.isHost}
           onPlayAgain={r.start}
           onRestart={r.restart}
+          reactionFeed={r.reactionFeed}
+          myReaction={r.myReaction}
+          onReact={r.react}
         />
       )}
     </div>

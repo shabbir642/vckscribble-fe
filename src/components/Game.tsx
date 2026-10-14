@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { ChatMessage, Player, Stroke } from '../generated/contract';
+import type { ChatMessage, Player, Reaction, Stroke } from '../generated/contract';
 import type { RoomSnapshot } from '../hooks/useRoom';
 import { Avatar } from './Avatar';
 import { Board } from './Board';
@@ -7,6 +7,7 @@ import { Chat } from './Chat';
 import { Confetti } from './Confetti';
 import { InviteLink } from './InviteLink';
 import { Podium, rankPlayers } from './Podium';
+import { Reactions } from './Reactions';
 import { Scores } from './Scores';
 import { WordPicker } from './WordPicker';
 
@@ -34,6 +35,9 @@ interface Props {
   onPlayAgain: () => void;
   /** Host: back to the lobby, mid-game or from the podium. */
   onRestart: () => void;
+  reactionFeed: { id: number; reaction: Reaction; name: string }[];
+  myReaction: Reaction | null;
+  onReact: (r: Reaction) => void;
 }
 
 /** Letter counts per word of a masked phrase: "_ _ _   _ _" -> "3, 2". */
@@ -136,7 +140,18 @@ export function Game(p: Props) {
 
   /* ------------------------------------------------------------ overlays */
   let overlay: ReactNode = null;
-  if (phase === 'selecting') {
+  if (phase === 'drawing') {
+    overlay = (
+      <Reactions
+        likes={room.round.likes}
+        dislikes={room.round.dislikes}
+        feed={p.reactionFeed}
+        mine={p.myReaction}
+        canReact={!isDrawer && p.online}
+        onReact={p.onReact}
+      />
+    );
+  } else if (phase === 'selecting') {
     overlay = (
       <div className="overlay">
         <div className="overlay-body">
@@ -168,6 +183,11 @@ export function Game(p: Props) {
         <div className="overlay-body">
           <p className="muted">The word was</p>
           <div className="solution">{room.round.solution ?? '…'}</div>
+          {(room.round.likes > 0 || room.round.dislikes > 0) && (
+            <p className="verdict">
+              {drawer?.name ?? 'The drawing'} got 👍 {room.round.likes} &nbsp;👎 {room.round.dislikes}
+            </p>
+          )}
           <ol>
             {gains.map(({ x, gain }) => (
               <li key={x.id}>
