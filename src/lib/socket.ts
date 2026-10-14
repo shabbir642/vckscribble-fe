@@ -3,17 +3,17 @@ import type {
   ClientToServerEvents,
   ServerToClientEvents,
 } from '../generated/contract';
+import { SERVER_URL } from './server';
 
 export type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 /**
- * Falls back to the host the page was served from rather than a literal
- * `localhost`, so a phone or laptop elsewhere on the wifi reaches the backend
- * on the dev machine instead of looking for one on itself. $VITE_SERVER_URL
- * still wins, which is how deployments point at a different host entirely.
+ * Single connection for the app. WebSocket first: starting on HTTP long-polling
+ * and upgrading costs extra round trips per connect, and polling requests from
+ * one client must all reach the same server process. Polling stays as a
+ * fallback for networks that block WebSockets.
  */
-const URL =
-  import.meta.env['VITE_SERVER_URL'] ?? `http://${window.location.hostname}:3001`;
-
-/** Single connection for the app; rooms are joined over it (M2). */
-export const socket: GameSocket = io(URL, { autoConnect: false });
+export const socket: GameSocket = io(SERVER_URL, {
+  autoConnect: false,
+  transports: ['websocket', 'polling'],
+});

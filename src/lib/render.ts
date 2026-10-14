@@ -1,9 +1,9 @@
-import type { Stroke } from '../generated/contract';
+import { COORD_SCALE, type Stroke } from '../generated/contract';
 
 /**
- * Strokes carry normalized 0..1 coordinates; everything here converts to the
- * pixel size of the target surface, so the same log renders correctly at any
- * canvas size.
+ * Strokes carry flat, quantized points — [x0, y0, x1, y1, ...] on a
+ * 0..COORD_SCALE grid. Everything here converts to the pixel size of the
+ * target surface, so the same log renders correctly at any canvas size.
  */
 export function drawStroke(
   ctx: CanvasRenderingContext2D,
@@ -11,12 +11,14 @@ export function drawStroke(
   w: number,
   h: number,
 ): void {
-  const pts = stroke.points;
-  if (!pts.length) return;
+  const p = stroke.points;
+  const n = p.length >> 1;
+  if (!n) return;
+  const sx = w / COORD_SCALE;
+  const sy = h / COORD_SCALE;
 
   if (stroke.tool === 'fill') {
-    const seed = pts[0]!;
-    floodFill(ctx, Math.round(seed.x * w), Math.round(seed.y * h), w, h, stroke.color);
+    floodFill(ctx, Math.round(p[0]! * sx), Math.round(p[1]! * sy), w, h, stroke.color);
     return;
   }
 
@@ -31,49 +33,39 @@ export function drawStroke(
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  if (pts.length === 1) {
-    const p = pts[0]!;
+  if (n === 1) {
     ctx.fillStyle = stroke.color;
     ctx.beginPath();
-    ctx.arc(p.x * w, p.y * h, ctx.lineWidth / 2, 0, Math.PI * 2);
+    ctx.arc(p[0]! * sx, p[1]! * sy, ctx.lineWidth / 2, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
     return;
   }
 
   ctx.beginPath();
-  ctx.moveTo(pts[0]!.x * w, pts[0]!.y * h);
+  ctx.moveTo(p[0]! * sx, p[1]! * sy);
   // Quadratic midpoints smooth the polyline without needing extra samples.
-  for (let i = 1; i < pts.length - 1; i++) {
-    const a = pts[i]!;
-    const b = pts[i + 1]!;
-    ctx.quadraticCurveTo(
-      a.x * w,
-      a.y * h,
-      ((a.x + b.x) / 2) * w,
-      ((a.y + b.y) / 2) * h,
-    );
+  for (let i = 1; i < n - 1; i++) {
+    const ax = p[2 * i]!, ay = p[2 * i + 1]!;
+    const bx = p[2 * i + 2]!, by = p[2 * i + 3]!;
+    ctx.quadraticCurveTo(ax * sx, ay * sy, ((ax + bx) / 2) * sx, ((ay + by) / 2) * sy);
   }
-  const last = pts[pts.length - 1]!;
-  ctx.lineTo(last.x * w, last.y * h);
+  ctx.lineTo(p[2 * n - 2]! * sx, p[2 * n - 1]! * sy);
   ctx.stroke();
   ctx.restore();
 }
 
+/**
+ * Two rows of fifteen: a dark and a light shade of every marker colour, so
+ * shading is one row away. Bright on purpose — this is a party game.
+ */
 export const PALETTE = [
-  // greys
-  '#1d1b16', '#4a463c', '#8a8577', '#c9c3b4', '#ffffff',
-  // reds / oranges
-  '#7a1f17', '#c2503f', '#e8705a', '#e07a3f', '#f0a868',
-  // yellows / greens
-  '#e8c15a', '#f5e06b', '#4a7a1f', '#2f6f4f', '#4a9d7e',
-  '#7fc99a',
-  // blues
-  '#1b3d6b', '#3f6fa8', '#5fa8d3', '#8fd3e8',
-  // purples / pinks
-  '#4a2a6b', '#6b4fa0', '#a07fc9', '#b05a8e', '#e89ab8',
-  // browns / skin
-  '#5a3a24', '#8a6a4a', '#c99a6b', '#e8c9a8', '#f2ddc4',
+  // darks
+  '#000000', '#5b5b66', '#c0142b', '#e8590c', '#f2b705', '#1a9c3e', '#0b7a75',
+  '#1c4fd8', '#5b21b6', '#b5179e', '#7c3f12', '#9a3412', '#3f6212', '#155e75', '#1e1b4b',
+  // lights
+  '#ffffff', '#c4c4cc', '#ff4d5e', '#ff922b', '#ffe066', '#51cf66', '#38d9c4',
+  '#4dabf7', '#9775fa', '#f783ac', '#c69466', '#ffc9a3', '#b2f2bb', '#a5d8ff', '#ffd6e7',
 ];
 
 export const SIZES = [0.006, 0.014, 0.032];

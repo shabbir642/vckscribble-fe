@@ -10,9 +10,9 @@ interface Props {
   onCustom: (text: string) => void;
 }
 
-const DIFFICULTY = ['', 'easy to draw', 'medium', 'tough'];
+const DIFFICULTY = ['', 'Easy to draw', 'Medium', 'Tough'];
 
-/** Requirement 1: three on offer, or write your own. */
+/** Requirement 1: three on offer, or write your own. Shown over the canvas. */
 export function WordPicker({
   choices, allowCustom, busy, secondsLeft, onChoose, onCustom,
 }: Props) {
@@ -20,55 +20,53 @@ export function WordPicker({
   const [writing, setWriting] = useState(false);
 
   return (
-    <div className="card picker">
-      <div className="row-between">
-        <h3>Pick a word to draw</h3>
-        <span className="timer">{secondsLeft}s</span>
-      </div>
+    <>
+      <h2>Choose a word to draw</h2>
+      <p className="muted">
+        {secondsLeft > 0 ? `${secondsLeft} seconds, or one gets picked for you` : 'Picking one for you…'}
+      </p>
 
       <div className="choices">
         {choices.map((c) => (
           <button key={c.id} className="choice" disabled={busy} onClick={() => onChoose(c.id)}>
-            <strong>{c.text}</strong>
-            <span className="muted">{DIFFICULTY[c.drawability]}</span>
+            <span>{c.text}</span>
+            <span className="level">{DIFFICULTY[c.drawability]}</span>
           </button>
         ))}
       </div>
 
       {allowCustom && !writing && (
         <button className="link" onClick={() => setWriting(true)}>
-          None of these — write my own
+          None of these? Write your own
         </button>
       )}
 
       {allowCustom && writing && (
-        <form
-          className="actions"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (own.trim().length >= 3) onCustom(own.trim());
-          }}
-        >
-          <input
-            value={own}
-            onChange={(e) => setOwn(e.target.value)}
-            placeholder="your own slang…"
-            maxLength={40}
-            autoFocus
-          />
-          <button className="primary" type="submit" disabled={busy || own.trim().length < 3}>
-            Draw this
-          </button>
-          <button type="button" onClick={() => setWriting(false)}>Cancel</button>
-        </form>
+        <>
+          <form
+            className="custom-word"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (own.trim().length >= 3) onCustom(own.trim());
+            }}
+          >
+            <input
+              value={own}
+              onChange={(e) => setOwn(e.target.value)}
+              placeholder="Your own corporate slang"
+              maxLength={40}
+              autoFocus
+            />
+            <button className="primary" type="submit" disabled={busy || own.trim().length < 3}>
+              Draw it
+            </button>
+          </form>
+          <p className="muted small">
+            Keep it guessable. Good ones get added to the dictionary.{' '}
+            <button className="link small" onClick={() => setWriting(false)}>Back to the list</button>
+          </p>
+        </>
       )}
-      {allowCustom && writing && (
-        <p className="muted small">
-          Everyone will see it immediately, so keep it guessable. Good ones get
-          added to the dictionary.
-        </p>
-      )}
-      {!allowCustom && <p className="muted small">Custom words are used up or disabled.</p>}
-    </div>
+    </>
   );
 }

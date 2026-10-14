@@ -1,71 +1,182 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { Result, RoomPreview } from '../generated/contract';
 import { AVATARS, Avatar } from './Avatar';
-import { roomFromUrl } from '../lib/session';
+import { Logo } from './Logo';
+import { loadProfile, roomFromUrl, setUrlRoom } from '../lib/session';
 
 interface Props {
   busy: boolean;
   connected: boolean;
   onCreate: (name: string, avatar: number) => void;
-  onJoin: (code: string, name: string, avatar: number) => void;
+  onJoin: (code: string, name: string, avatar: number) => Promise<Result>;
+  onPeek: (code: string) => Promise<Result<RoomPreview>>;
 }
 
-export function Home({ busy, connected, onCreate, onJoin }: Props) {
-  const [name, setName] = useState('');
-  const [avatar, setAvatar] = useState(() => Math.floor(Math.random() * AVATARS.length));
-  const [code, setCode] = useState(() => roomFromUrl() ?? '');
+function describe(p: RoomPreview): string {
+  const who = `${p.players} of ${p.maxPlayers} players`;
+  if (p.phase === 'lobby') return `${who} waiting for the game to start`;
+  if (p.phase === 'finished') return `${who}, between games`;
+  return `${who}, game in progress (you can jump in)`;
+}
 
-  const canCreate = name.trim().length > 0 && connected && !busy;
-  const canJoin = canCreate && code.trim().length >= 4;
+/**
+ * Two faces, like skribbl:
+ * - opened from an invite link: the room you are joining comes first, shown
+ *   before you commit — or a plain "this link has expired";
+ * - opened directly: create a room, or type a code.
+ * Your name and avatar are remembered from last time either way.
+ */
+export function Home({ busy, connected, onCreate, onJoin, onPeek }: Props) {
+  const saved = loadProfile();
+  const [name, setName] = useState(saved?.name ?? '');
+  const [avatar, setAvatar] = useState(
+    () => saved?.avatar ?? Math.floor(Math.random() * AVATARS.length),
+  );
+  const [invite, setInvite] = useState(roomFromUrl);
+  const [preview, setPreview] = useState<RoomPreview | null>(null);
+  const [inviteDead, setInviteDead] = useState(false);
+  const [code, setCode] = useState('');
+
+  // Look the invite up as soon as there is a connection to ask over.
+  useEffect(() => {
+    if (!invite || !connected) return;
+    let live = true;
+    void onPeek(invite).then((r) => {
+      if (!live) return;
+      if (r.ok) setPreview(r);
+      else {
+        setInviteDead(true);
+        setUrlRoom(null);
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [invite, connected, onPeek]);
+
+  const clean = name.trim();
+  const ready = clean.length > 0 && connected && !busy;
+  const full = preview ? preview.players >= preview.maxPlayers : false;
+  const inviting = Boolean(invite && !inviteDead);
+
+  const join = async (target: string) => {
+    const r = await onJoin(target, clean, avatar);
+    if (!r.ok && r.code === 'ROOM_NOT_FOUND' && target === invite) {
+      setInviteDead(true);
+      setUrlRoom(null);
+    }
+  };
+
+  const dropInvite = () => {
+    setInvite(null);
+    setPreview(null);
+    setInviteDead(false);
+    setUrlRoom(null);
+  };
+
+  const submit = () => {
+    if (!ready) return;
+    if (inviting) void join(invite!);
+    else onCreate(clean, avatar);
+  };
 
   return (
-    <div className="card">
-      <label className="field">
-        <span>Your name</span>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          maxLength={20}
-          placeholder="Alice"
-          autoFocus
-        />
-      </label>
+    <div className="home">
+      <div className="center">
+        <Logo big />
+        <p className="tagline">Draw the corporate slang. Guess the corporate slang.</p>
+      </div>
 
-      <div className="field">
-        <span>Avatar</span>
-        <div className="avatars">
-          {AVATARS.map((_, i) => (
-            <button
-              key={i}
-              type="button"
-              className={`avatar-pick ${i === avatar ? 'on' : ''}`}
-              onClick={() => setAvatar(i)}
-              aria-label={`Avatar ${i + 1}`}
-              aria-pressed={i === avatar}
-            >
-              <Avatar i={i} size={22} />
-            </button>
-          ))}
+      <div className="card">
+        {inviting && (
+          <div className="invite-head">
+            <h2>{preview?.hostName ? `${preview.hostName} invited you to play` : 'You’re invited to play'}</h2>
+            <div className="room-code">{invite}</div>
+            <p className="muted">
+              {preview ? describe(preview) : connected ? 'Looking up the room…' : 'Connecting…'}
+            </p>
+          </div>
+        )}
+        {inviteDead && (
+          <p className="notice" role="status">
+            That invite link has expired because the room closed. Start a new room below.
+          </p>
+        )}
+
+        <div className="hero-avatar">
+          <Avatar i={avatar} size={84} />
         </div>
-      </div>
 
-      <div className="actions">
-        <button className="primary" disabled={!canCreate} onClick={() => onCreate(name.trim(), avatar)}>
-          Create room
-        </button>
-        <span className="or">or</span>
-        <input
-          className="code-input"
-          value={code}
-          onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 6))}
-          placeholder="CODE"
-          aria-label="Room code"
-        />
-        <button disabled={!canJoin} onClick={() => onJoin(code.trim(), name.trim(), avatar)}>
-          Join
-        </button>
-      </div>
+        <label className="field">
+          <span>Your name</span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={20}
+            placeholder="Enter your name"
+            autoFocus={!clean}
+            onKeyDown={(e) => e.key === 'Enter' && submit()}
+          />
+        </label>
 
-      {!connected && <p className="muted">Connecting to server…</p>}
+        <div className="field">
+          <span>Pick your avatar</span>
+          <div className="avatar-grid">
+            {AVATARS.map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                className={`avatar-pick ${i === avatar ? 'on' : ''}`}
+                onClick={() => setAvatar(i)}
+                aria-label={`Avatar ${i + 1}`}
+                aria-pressed={i === avatar}
+              >
+                <Avatar i={i} size={40} />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {inviting ? (
+          <>
+            <button
+              className="primary big wide"
+              disabled={!ready || !preview || full}
+              onClick={() => void join(invite!)}
+            >
+              {full ? 'This room is full' : 'Join the game'}
+            </button>
+            <p className="center" style={{ marginTop: 12 }}>
+              <button className="link" onClick={dropInvite}>
+                Create my own room instead
+              </button>
+            </p>
+          </>
+        ) : (
+          <>
+            <button className="primary big wide" disabled={!ready} onClick={() => onCreate(clean, avatar)}>
+              Create a room
+            </button>
+            <div className="divider">or join with a code</div>
+            <div className="join-row">
+              <input
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && ready && code.length >= 4) void join(code);
+                }}
+                placeholder="CODE"
+                aria-label="Room code"
+              />
+              <button disabled={!ready || code.length < 4} onClick={() => void join(code)}>
+                Join
+              </button>
+            </div>
+          </>
+        )}
+
+        {!connected && <p className="muted center" style={{ marginTop: 14 }}>Connecting to the server…</p>}
+      </div>
     </div>
   );
 }

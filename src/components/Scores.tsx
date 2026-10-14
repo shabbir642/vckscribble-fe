@@ -1,7 +1,9 @@
+import { memo } from 'react';
 import type { Player } from '../generated/contract';
 import { Avatar } from './Avatar';
 
-export function Scores({
+/** The left-hand scoreboard: rank, avatar, name, points, and who is drawing. */
+export const Scores = memo(function Scores({
   players, drawerId, guessed, youId,
 }: {
   players: Player[];
@@ -11,20 +13,31 @@ export function Scores({
 }) {
   const ranked = [...players].sort((a, b) => b.score - a.score);
   return (
-    <div className="card">
-      <h3>Scores</h3>
-      <ul className="players">
-        {ranked.map((p) => (
-          <li key={p.id} className={p.connected ? '' : 'away'}>
-            <Avatar i={p.avatar} size={22} />
-            <span className="pname">{p.name}</span>
-            {p.id === youId && <span className="tag">you</span>}
-            {p.id === drawerId && <span className="tag">drawing</span>}
-            {guessed.includes(p.id) && <span className="tag ok-tag">got it</span>}
-            <span className="score">{p.score}</span>
-          </li>
-        ))}
-      </ul>
+    <div className="card players-panel">
+      {ranked.map((p, i) => {
+        const cls = [
+          'player-row',
+          p.id === youId && 'me',
+          p.id === drawerId && 'drawing',
+          guessed.includes(p.id) && 'guessed',
+          !p.connected && 'away',
+        ].filter(Boolean).join(' ');
+        return (
+          <div key={p.id} className={cls}>
+            <span className="rank">#{i + 1}</span>
+            <Avatar i={p.avatar} size={36} />
+            <span className="who">
+              <span className="pname">{p.name}</span>
+              <span className="pts">
+                {p.connected ? `${p.score} points` : `${p.score} points (away)`}
+              </span>
+            </span>
+            <span className="badge" aria-label={p.id === drawerId ? 'drawing' : guessed.includes(p.id) ? 'guessed it' : undefined}>
+              {p.id === drawerId ? '✏️' : guessed.includes(p.id) ? '✅' : p.isHost ? '👑' : ''}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
-}
+});

@@ -3,14 +3,24 @@ import type {
   ChatMessage,
   Player,
   Result,
+  RoomPreview,
   RoomSettings,
   RoundState,
   Stroke,
   WordChoice,
 } from '../generated/contract';
 import { socket } from '../lib/socket';
-import { clearSession, loadSession, saveSession } from '../lib/session';
+import {
+  clearSession,
+  deviceId,
+  loadSession,
+  roomFromUrl,
+  saveProfile,
+  saveSession,
+  setUrlRoom,
+} from '../lib/session';
 import { sfx } from '../lib/sound';
+import { strokeStore } from '../lib/strokes';
 
 export interface RoomSnapshot {
   roomCode: string;
@@ -24,9 +34,8 @@ export interface UseRoom {
   connected: boolean;
   room: RoomSnapshot | null;
   messages: ChatMessage[];
-  strokes: Stroke[];
-  /** Bumped on undo/clear so the canvas knows to rebuild its cache. */
-  generation: number;
+  /** True while re-taking a seat: on page load, or after a dropped connection. */
+  reconnecting: boolean;
   /** Drawer only: the three on offer, plus whether a custom word is allowed. */
   wordOptions: { choices: WordChoice[]; allowCustom: boolean } | null;
   /** Drawer only: the solution they are drawing. */
@@ -39,14 +48,19 @@ export interface UseRoom {
   you: Player | null;
   isHost: boolean;
   create: (name: string, avatar: number) => Promise<void>;
-  join: (roomCode: string, name: string, avatar: number) => Promise<void>;
+  join: (roomCode: string, name: string, avatar: number) => Promise<Result>;
+  /** What an invite code points at, without joining. */
+  peek: (roomCode: string) => Promise<Result<RoomPreview>>;
+  /** Rename / re-avatar yourself; lobby only. */
+  updateProfile: (patch: { name?: string; avatar?: number }) => Promise<Result>;
   updateSettings: (patch: Partial<RoomSettings>) => Promise<void>;
   start: () => Promise<void>;
   chooseWord: (wordId: number) => Promise<void>;
   customWord: (text: string) => Promise<void>;
   sendGuess: (text: string) => void;
   reportWord: () => void;
-  sendStroke: (s: Stroke) => void;
+  drawStart: (s: Stroke) => void;
+  drawAppend: (id: string, points: number[]) => void;
   undo: () => void;
   clear: () => void;
   leave: () => void;
@@ -59,8 +73,7 @@ export function useRoom(): UseRoom {
   const [connected, setConnected] = useState(socket.connected);
   const [room, setRoom] = useState<RoomSnapshot | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [strokes, setStrokes] = useState<Stroke[]>([]);
-  const [generation, setGeneration] = useState(0);
+  const [reconnecting, setReconnecting] = useState(false);
   const [wordOptions, setWordOptions] =
     useState<{ choices: WordChoice[]; allowCustom: boolean } | null>(null);
   const [assignedWord, setAssignedWord] = useState<string | null>(null);
@@ -69,23 +82,77 @@ export function useRoom(): UseRoom {
   const [finalScores, setFinalScores] = useState<Player[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** StrictMode double-mounts in dev; resume must not fire twice. */
-  const resumed = useRef(false);
+  /** Guards against a second resume while one is still in flight. */
+  const resuming = useRef(false);
+  /** Set between a successful resume and the drawing resync that follows it. */
+  const awaitingSync = useRef(false);
+  /** Whether this page currently shows a room, readable from socket handlers. */
+  const inRoom = useRef(false);
+  inRoom.current = room !== null;
+
+  /** Back to the home screen, e.g. when the room no longer exists. */
+  const resetRoom = useCallback(() => {
+    // Clear the URL before Home renders, or it reads the old code as an invite.
+    setUrlRoom(null);
+    setRoom(null);
+    setMessages([]);
+    setWordOptions(null);
+    setAssignedWord(null);
+    setFinalScores(null);
+    strokeStore.clear();
+  }, []);
 
   useEffect(() => {
+    /**
+     * Every (re)connection re-seats the player. A socket reconnect gets a new
+     * id the server has never seen, so without this the page keeps showing the
+     * game while receiving nothing. This used to run once per page load, so the
+     * second wifi blip left the player silently frozen.
+     */
     const onConnect = () => {
       setConnected(true);
       const s = loadSession();
-      if (s && !resumed.current) {
-        resumed.current = true;
-        socket.emit('room:resume', s, (r) => {
-          // A stale token just means the room is gone; drop it silently
-          // rather than greeting the player with an error on page load.
-          if (!r.ok) clearSession();
-        });
+      // An invite link to a different room wins over an old seat: whoever
+      // opened it means to join *that* room, not be dropped back into the last
+      // one they played in.
+      const invite = roomFromUrl();
+      if (!s || (invite && invite !== s.roomCode && !inRoom.current)) {
+        setReconnecting(false);
+        return;
       }
+      if (resuming.current) return;
+      resuming.current = true;
+      setReconnecting(true);
+      socket.emit('room:resume', s, (r) => {
+        resuming.current = false;
+        if (r.ok) {
+          // The seat is back, but the drawing resync follows the ack: stay in
+          // "reconnecting" (brush paused) until it lands, so nothing is drawn
+          // into a canvas that is about to be replaced. Fallback in case it
+          // never comes.
+          awaitingSync.current = true;
+          setTimeout(() => {
+            if (!awaitingSync.current) return;
+            awaitingSync.current = false;
+            setReconnecting(false);
+          }, 3000);
+          return;
+        }
+        setReconnecting(false);
+        // The room is gone — a server restart, or it was collected. Leave it
+        // rather than showing a game that will never move again.
+        clearSession();
+        if (inRoom.current) {
+          resetRoom();
+          setError('That game has ended — the server restarted or the room closed.');
+        }
+        setUrlRoom(null);
+      });
     };
-    const onDisconnect = () => setConnected(false);
+    const onDisconnect = () => {
+      setConnected(false);
+      if (loadSession()) setReconnecting(true);
+    };
 
     const onState = (p: {
       roomCode: string;
@@ -145,26 +212,18 @@ export function useRoom(): UseRoom {
       setMessages((prev) => [...prev, m].slice(-MAX_MESSAGES));
     };
 
-    // Upsert by id: a drag streams under one id as it grows.
-    const onStroke = (p: { stroke: Stroke }) =>
-      setStrokes((prev) => {
-        const at = prev.findIndex((s) => s.id === p.stroke.id);
-        if (at === -1) return [...prev, p.stroke];
-        const next = prev.slice();
-        next[at] = p.stroke;
-        return next;
-      });
-    const onUndo = (p: { strokeId: string }) => {
-      setStrokes((prev) => prev.filter((s) => s.id !== p.strokeId));
-      setGeneration((g) => g + 1);
-    };
-    const onClear = () => {
-      setStrokes([]);
-      setGeneration((g) => g + 1);
-    };
+    // Drawing traffic goes straight to the canvas's store, never to React.
+    const onStroke = (p: { stroke: Stroke }) => strokeStore.put(p.stroke);
+    const onPoints = (p: { strokeId: string; points: number[] }) =>
+      strokeStore.append(p.strokeId, p.points);
+    const onUndo = (p: { strokeId: string }) => strokeStore.remove(p.strokeId);
+    const onClear = () => strokeStore.clear();
     const onSync = (p: { strokes: Stroke[] }) => {
-      setStrokes(p.strokes);
-      setGeneration((g) => g + 1);
+      strokeStore.replaceAll(p.strokes);
+      if (awaitingSync.current) {
+        awaitingSync.current = false;
+        setReconnecting(false);
+      }
     };
     const onToast = (p: { message: string }) => setError(p.message);
 
@@ -181,11 +240,13 @@ export function useRoom(): UseRoom {
     socket.on('chat:close', onClose);
     socket.on('game:scores', onScores);
     socket.on('draw:stroke', onStroke);
+    socket.on('draw:points', onPoints);
     socket.on('draw:undo', onUndo);
     socket.on('draw:clear', onClear);
     socket.on('draw:sync', onSync);
     socket.on('error:toast', onToast);
-    socket.connect();
+    if (socket.connected) onConnect();
+    else socket.connect();
 
     return () => {
       socket.off('connect', onConnect);
@@ -201,18 +262,40 @@ export function useRoom(): UseRoom {
       socket.off('chat:close', onClose);
       socket.off('game:scores', onScores);
       socket.off('draw:stroke', onStroke);
+      socket.off('draw:points', onPoints);
       socket.off('draw:undo', onUndo);
       socket.off('draw:clear', onClear);
       socket.off('draw:sync', onSync);
       socket.off('error:toast', onToast);
     };
-  }, []);
+  }, [resetRoom]);
+
+  /**
+   * The address bar mirrors the room: `/?room=CODE` while you are in one, so
+   * the URL is always a working invite, and `/` once you leave, so a dead code
+   * never lingers to prefill the next visit.
+   */
+  const shownCode = useRef<string | null>(null);
+  useEffect(() => {
+    const code = room?.roomCode ?? null;
+    if (code) setUrlRoom(code);
+    else if (shownCode.current) setUrlRoom(null);
+    shownCode.current = code;
+  }, [room?.roomCode]);
 
   /** Wraps an ack-style emit so every caller gets the same busy/error handling. */
   const request = useCallback(
     <T extends object>(
       run: (ack: (r: Result<T>) => void) => void,
     ): Promise<Result<T>> => {
+      // Offline, Socket.IO would queue the request and send it on reconnect —
+      // before the seat is re-taken, so the server rejects it, and meanwhile the
+      // button sits busy. Say so now instead.
+      if (!socket.connected) {
+        const message = 'You’re offline. Reconnecting…';
+        setError(message);
+        return Promise.resolve({ ok: false, code: 'INTERNAL', message } as Result<T>);
+      }
       setBusy(true);
       setError(null);
       return new Promise((resolve) => {
@@ -228,8 +311,9 @@ export function useRoom(): UseRoom {
 
   const create = useCallback(
     async (name: string, avatar: number) => {
+      saveProfile({ name, avatar });
       const r = await request<{ roomCode: string; token: string }>((ack) =>
-        socket.emit('room:create', { name, avatar }, ack),
+        socket.emit('room:create', { name, avatar, deviceId: deviceId() }, ack),
       );
       if (r.ok) saveSession({ roomCode: r.roomCode, token: r.token });
     },
@@ -238,10 +322,32 @@ export function useRoom(): UseRoom {
 
   const join = useCallback(
     async (roomCode: string, name: string, avatar: number) => {
+      saveProfile({ name, avatar });
       const r = await request<{ token: string }>((ack) =>
-        socket.emit('room:join', { roomCode, name, avatar }, ack),
+        socket.emit('room:join', { roomCode, name, avatar, deviceId: deviceId() }, ack),
       );
       if (r.ok) saveSession({ roomCode: roomCode.toUpperCase(), token: r.token });
+      return r;
+    },
+    [request],
+  );
+
+  const peek = useCallback(
+    (roomCode: string) =>
+      new Promise<Result<RoomPreview>>((resolve) =>
+        socket.emit('room:peek', { roomCode }, resolve),
+      ),
+    [],
+  );
+
+  const updateProfile = useCallback(
+    async (patch: { name?: string; avatar?: number }) => {
+      const r = await request((ack) => socket.emit('player:update', patch, ack));
+      if (r.ok) {
+        const me = latestYou.current;
+        if (me) saveProfile({ name: patch.name ?? me.name, avatar: patch.avatar ?? me.avatar });
+      }
+      return r;
     },
     [request],
   );
@@ -273,48 +379,52 @@ export function useRoom(): UseRoom {
     [request],
   );
 
+  /**
+   * Fire-and-forget events are dropped while offline rather than queued.
+   * Socket.IO flushes its queue on reconnect *before* the client can re-take
+   * its seat, so queued strokes and guesses all bounced with "You are not in a
+   * room". The rejoin resyncs the drawing instead (`draw:sync`).
+   */
   const sendGuess = useCallback((text: string) => {
-    socket.emit('chat:guess', { text });
+    if (socket.connected) socket.emit('chat:guess', { text });
   }, []);
 
   const reportWord = useCallback(() => {
-    socket.emit('word:report', { reason: 'inappropriate' }, () => undefined);
+    if (socket.connected) socket.emit('word:report', { reason: 'inappropriate' }, () => undefined);
   }, []);
 
-  /** Optimistic: the drawer sees their own line immediately, no round trip. */
-  const sendStroke = useCallback((stroke: Stroke) => {
-    setStrokes((prev) => {
-      const at = prev.findIndex((s) => s.id === stroke.id);
-      if (at === -1) return [...prev, stroke];
-      const next = prev.slice();
-      next[at] = stroke;
-      return next;
-    });
-    socket.emit('draw:stroke', { stroke });
+  /** The canvas paints its own strokes locally; these only transmit. */
+  const drawStart = useCallback((stroke: Stroke) => {
+    if (socket.connected) socket.emit('draw:stroke', { stroke });
+  }, []);
+  const drawAppend = useCallback((id: string, points: number[]) => {
+    if (socket.connected) socket.emit('draw:points', { id, points });
   }, []);
 
-  const undo = useCallback(() => socket.emit('draw:undo', {}), []);
-  const clear = useCallback(() => socket.emit('draw:clear', {}), []);
+  const undo = useCallback(() => {
+    if (socket.connected) socket.emit('draw:undo', {});
+  }, []);
+  const clear = useCallback(() => {
+    if (socket.connected) socket.emit('draw:clear', {});
+  }, []);
 
   const leave = useCallback(() => {
     clearSession();
-    resumed.current = false;
-    setRoom(null);
-    setMessages([]);
-    setStrokes([]);
-    setGeneration((g) => g + 1);
+    resetRoom();
     socket.disconnect();
     socket.connect();
-  }, []);
+  }, [resetRoom]);
 
+  const dismissError = useCallback(() => setError(null), []);
   const you = room?.players.find((p) => p.id === room.youId) ?? null;
+  const latestYou = useRef(you);
+  latestYou.current = you;
 
   return {
     connected,
     room,
     messages,
-    strokes,
-    generation,
+    reconnecting,
     wordOptions,
     assignedWord,
     secondsLeft,
@@ -326,16 +436,19 @@ export function useRoom(): UseRoom {
     isHost: you?.isHost ?? false,
     create,
     join,
+    peek,
+    updateProfile,
     updateSettings,
     start,
     chooseWord,
     customWord,
     sendGuess,
     reportWord,
-    sendStroke,
+    drawStart,
+    drawAppend,
     undo,
     clear,
     leave,
-    dismissError: () => setError(null),
+    dismissError,
   };
 }

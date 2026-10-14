@@ -38,20 +38,14 @@ honored as an alternative for the API path.)
 
 ## Deploy
 
-A static bundle — any static host works (Cloudflare Pages, Netlify, Vercel).
+Deployed together with the backend as one Docker Compose stack on a VPS — see
+`deploy/` and "Deploy (VPS)" in the backend README. This repo's `Dockerfile`
+builds the static bundle into a Caddy image, which also reverse-proxies `/api`
+and `/socket.io` to the backend.
 
-```bash
-VITE_SERVER_URL=https://vckscribble.fly.dev pnpm build   # -> dist/
-```
+A production build talks to **its own origin** by default, so no backend URL is
+baked in. Set `VITE_SERVER_URL` at build time only if the backend is on a
+different host (then the backend's `CLIENT_ORIGIN` must name this origin).
 
-Two things must line up or the socket will fail at runtime:
-
-1. `VITE_SERVER_URL` is baked in **at build time**, not read at runtime.
-   Changing the backend URL means rebuilding.
-2. The backend's `CLIENT_ORIGIN` must name this deployment's origin exactly,
-   or CORS blocks both the health check and the socket handshake.
-
-The build needs the contract, so CI (and any build host) needs either
-`BE_REPO_TOKEN` / `CONTRACT_TOKEN`, or the committed `src/generated/contract.ts`
-to be current — it is committed, so a plain `vite build` works offline; only
-`contract:check` needs access.
+The image build uses the committed `src/generated/contract.ts`; CI's
+`contract:check` is what guarantees it matches the backend.

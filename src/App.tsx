@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { Game } from './components/Game';
 import { Home } from './components/Home';
 import { Lobby } from './components/Lobby';
-import { useState } from 'react';
+import { Logo } from './components/Logo';
+import { Toasts } from './components/Toasts';
 import { useRoom } from './hooks/useRoom';
 import { soundEnabled, toggleSound } from './lib/sound';
 
@@ -13,35 +15,48 @@ export function App() {
   return (
     <div className="wrap">
       <header className="head">
-        <div>
-          <h1>vckscribble</h1>
-          <p className="sub">Draw the corporate slang. Guess the corporate slang.</p>
-        </div>
+        {r.room ? <Logo /> : <span />}
         <div className="row">
           <button
-            className="small"
+            className="small icon"
             onClick={() => setSound(toggleSound())}
             aria-pressed={sound}
-            title={sound ? 'Mute' : 'Unmute'}
+            aria-label={sound ? 'Mute sounds' : 'Turn sounds on'}
+            title={sound ? 'Mute sounds' : 'Turn sounds on'}
           >
-            {sound ? 'Sound on' : 'Sound off'}
+            {sound ? '🔊' : '🔇'}
           </button>
           <span
-            className={`dot ${r.connected ? 'ok' : 'bad'}`}
-            title={r.connected ? 'connected' : 'offline'}
+            className={`conn ${r.connected ? 'ok' : 'bad'}`}
+            title={r.connected ? 'Connected' : 'Offline'}
+            aria-label={r.connected ? 'Connected' : 'Offline'}
           />
         </div>
       </header>
 
-      {r.error && (
-        <div className="card error" role="alert">
-          <span>{r.error}</span>
-          <button onClick={r.dismissError}>Dismiss</button>
+      <Toasts
+        error={r.error}
+        info={r.room && r.reconnecting ? 'Connection lost. Getting your seat back…' : null}
+        onDismiss={r.dismissError}
+      />
+
+      {!r.room && r.reconnecting && (
+        <div className="home">
+          <div className="center">
+            <Logo big />
+            <p className="tagline">Getting your seat back…</p>
+          </div>
         </div>
       )}
 
-      {!r.room && (
-        <Home busy={r.busy} connected={r.connected} onCreate={r.create} onJoin={r.join} />
+      {!r.room && !r.reconnecting && (
+        <Home
+          busy={r.busy}
+          connected={r.connected}
+          onCreate={r.create}
+          onJoin={r.join}
+          onPeek={r.peek}
+        />
       )}
 
       {r.room && !inGame && (
@@ -49,23 +64,25 @@ export function App() {
           room={r.room}
           isHost={r.isHost}
           busy={r.busy}
+          online={r.connected && !r.reconnecting}
+          messages={r.messages}
           onSettings={r.updateSettings}
           onStart={r.start}
           onLeave={r.leave}
-          strokes={r.strokes}
-          generation={r.generation}
-          onStroke={r.sendStroke}
+          onDrawStart={r.drawStart}
+          onDrawAppend={r.drawAppend}
           onUndo={r.undo}
           onClear={r.clear}
+          onProfile={r.updateProfile}
+          onGuess={r.sendGuess}
         />
       )}
 
       {r.room && inGame && (
         <Game
           room={r.room}
+          online={r.connected && !r.reconnecting}
           messages={r.messages}
-          strokes={r.strokes}
-          generation={r.generation}
           wordOptions={r.wordOptions}
           assignedWord={r.assignedWord}
           secondsLeft={r.secondsLeft}
@@ -76,21 +93,14 @@ export function App() {
           onCustom={r.customWord}
           onGuess={r.sendGuess}
           onReport={r.reportWord}
-          onStroke={r.sendStroke}
+          onDrawStart={r.drawStart}
+          onDrawAppend={r.drawAppend}
           onUndo={r.undo}
           onClear={r.clear}
           onLeave={r.leave}
           isHost={r.isHost}
           onPlayAgain={r.start}
         />
-      )}
-
-      {r.room && !inGame && r.messages.length > 0 && (
-        <div className="card log">
-          {r.messages.slice(-6).map((m) => (
-            <div key={m.id} className="muted mono">{m.text}</div>
-          ))}
-        </div>
       )}
     </div>
   );

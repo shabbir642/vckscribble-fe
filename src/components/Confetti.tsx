@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-const COLORS = ['#e8c15a', '#2f7d52', '#3f6fa8', '#b05a8e', '#e07a3f'];
+const COLORS = ['#ffd23f', '#2bd46e', '#ff5fa2', '#8fe3ff', '#ff8a3d', '#c3b8ff'];
 
 /**
  * Pure CSS confetti: a handful of absolutely-positioned chips that fall once

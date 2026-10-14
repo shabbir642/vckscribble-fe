@@ -1,16 +1,19 @@
+import { useEffect, useRef, type ReactNode } from 'react';
 import type { ChatMessage, Player, Stroke } from '../generated/contract';
 import type { RoomSnapshot } from '../hooks/useRoom';
+import { Avatar } from './Avatar';
 import { Board } from './Board';
 import { Chat } from './Chat';
+import { Confetti } from './Confetti';
+import { InviteLink } from './InviteLink';
 import { Scores } from './Scores';
 import { WordPicker } from './WordPicker';
-import { Confetti } from './Confetti';
 
 interface Props {
   room: RoomSnapshot;
+  /** False while reconnecting: drawing and guessing pause until the seat is back. */
+  online: boolean;
   messages: ChatMessage[];
-  strokes: Stroke[];
-  generation: number;
   wordOptions: { choices: { id: number; text: string; drawability: 1 | 2 | 3 }[]; allowCustom: boolean } | null;
   assignedWord: string | null;
   secondsLeft: number;
@@ -21,7 +24,8 @@ interface Props {
   onCustom: (text: string) => void;
   onGuess: (text: string) => void;
   onReport: () => void;
-  onStroke: (s: Stroke) => void;
+  onDrawStart: (s: Stroke) => void;
+  onDrawAppend: (id: string, points: number[]) => void;
   onUndo: () => void;
   onClear: () => void;
   onLeave: () => void;
@@ -29,128 +33,236 @@ interface Props {
   onPlayAgain: () => void;
 }
 
+/** Letter counts per word of a masked phrase: "_ _ _   _ _" -> "3, 2". */
+function wordLengths(masked: string): string {
+  return masked
+    .split(/\s{3,}/)
+    .map((w) => w.replace(/\s/g, '').length)
+    .join(', ');
+}
+
+const ranked = (players: Player[]) => [...players].sort((a, b) => b.score - a.score);
+
 export function Game(p: Props) {
   const { room } = p;
+  const phase = room.round.phase;
   const isDrawer = room.round.drawerId === room.youId;
   const drawer = room.players.find((x) => x.id === room.round.drawerId);
   const youGuessed = room.round.guessedPlayerIds.includes(room.youId);
-  const phase = room.round.phase;
 
-  const canDraw = isDrawer && phase === 'drawing';
-  const canGuess = !isDrawer && (phase === 'drawing' || phase === 'lobby');
+  const canDraw = isDrawer && phase === 'drawing' && p.online;
+  const canGuess = !isDrawer && phase === 'drawing' && p.online;
 
-  const placeholder = isDrawer
-    ? 'You are drawing — no chatting'
+  // Scores as the turn began, so the reveal can show what each player won.
+  const turnStart = useRef(new Map<string, number>());
+  useEffect(() => {
+    if (phase === 'drawing') {
+      turnStart.current = new Map(room.players.map((x) => [x.id, x.score]));
+    }
+    // Only on entering the drawing phase: score changes mid-turn are the point.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  const placeholder = !p.online
+    ? 'Reconnecting…'
+    : canDraw
+    ? 'No chatting while you draw'
     : youGuessed
-      ? 'You got it! (only solvers see this)'
-      : 'Type your guess…';
+      ? 'Chat with the other solvers'
+      : phase === 'drawing'
+        ? 'Type your guess here…'
+        : 'Guess when the drawing starts';
 
-  return (
-    <>
-      <div className="card row-between status">
-        <div className="row">
-          <span className="tag">Round {room.round.round}/{room.round.totalRounds}</span>
-          {phase === 'drawing' && <span className="timer">{p.secondsLeft}s</span>}
+  /* ---------------------------------------------------------- word strip */
+  let center: ReactNode = null;
+  if (phase === 'drawing' && isDrawer && p.assignedWord) {
+    center = (
+      <>
+        <div className="hint-label">Draw this</div>
+        <div className="mask reveal">{p.assignedWord}</div>
+      </>
+    );
+  } else if (phase === 'drawing' && room.round.maskedWord) {
+    center = (
+      <>
+        <div className="hint-label">{youGuessed ? 'You got it!' : 'Guess this'}</div>
+        <div className="mask">
+          {room.round.maskedWord}
+          <span className="word-count">({wordLengths(room.round.maskedWord)})</span>
         </div>
+      </>
+    );
+  } else if ((phase === 'reveal' || phase === 'scoreboard') && room.round.solution) {
+    center = (
+      <>
+        <div className="hint-label">The word was</div>
+        <div className="mask reveal">{room.round.solution}</div>
+      </>
+    );
+  } else if (phase === 'selecting') {
+    center = (
+      <div className="hint-label">
+        {isDrawer ? 'Your turn to draw!' : `${drawer?.name ?? 'Someone'} is picking a word`}
+      </div>
+    );
+  } else if (phase === 'finished') {
+    center = <div className="hint-label">Game over</div>;
+  }
 
-        <div className="center-word">
-          {phase === 'drawing' && isDrawer && p.assignedWord && (
-            <span className="mono mask">{p.assignedWord}</span>
-          )}
-          {phase === 'drawing' && !isDrawer && room.round.maskedWord && (
-            <span className="mono mask">{room.round.maskedWord}</span>
-          )}
-          {(phase === 'reveal' || phase === 'scoreboard') && room.round.solution && (
-            <span className="solution">{room.round.solution}</span>
-          )}
-          {phase === 'selecting' && !isDrawer && (
-            <span className="muted">{drawer?.name ?? 'Someone'} is choosing…</span>
-          )}
-        </div>
+  const timed = phase === 'drawing' || phase === 'selecting';
+  const hurry = phase === 'drawing' && p.secondsLeft > 0 && p.secondsLeft <= 10;
 
-        <div className="row">
-          {phase === 'drawing' && !isDrawer && (
-            <button className="link small" onClick={p.onReport} title="Report this word">
-              Report
-            </button>
+  /* ------------------------------------------------------------ overlays */
+  let overlay: ReactNode = null;
+  if (phase === 'selecting') {
+    overlay = (
+      <div className="overlay">
+        <div className="overlay-body">
+          {isDrawer && p.wordOptions ? (
+            <WordPicker
+              choices={p.wordOptions.choices}
+              allowCustom={p.wordOptions.allowCustom}
+              busy={p.busy}
+              secondsLeft={p.secondsLeft}
+              onChoose={p.onChoose}
+              onCustom={p.onCustom}
+            />
+          ) : (
+            <>
+              {drawer && <Avatar i={drawer.avatar} size={84} />}
+              <h2>{drawer?.name ?? 'Someone'} is choosing a word</h2>
+              <p className="muted">Get ready to guess!</p>
+            </>
           )}
-          <button onClick={p.onLeave}>Leave</button>
         </div>
       </div>
-
-      {phase === 'selecting' && isDrawer && p.wordOptions && (
-        <WordPicker
-          choices={p.wordOptions.choices}
-          allowCustom={p.wordOptions.allowCustom}
-          busy={p.busy}
-          secondsLeft={p.secondsLeft}
-          onChoose={p.onChoose}
-          onCustom={p.onCustom}
-        />
-      )}
-
-      {phase === 'finished' && p.finalScores && (
-        <div className="card podium">
-          <Confetti />
-          {(() => {
-            const ranked = [...p.finalScores!].sort((a, b) => b.score - a.score);
-            const top = ranked[0]!.score;
-            // A draw is possible, so announce every player on the top score
-            // rather than whoever sorted first.
-            const champs = ranked.filter((x) => x.score === top);
-            return (
-              <p className="winner-banner">
-                {champs.length > 1
-                  ? `It's a tie — ${champs.map((c) => c.name).join(' & ')}!`
-                  : `${champs[0]!.name} wins!`}
-              </p>
-            );
-          })()}
-          <h3>Final scores</h3>
+    );
+  } else if (phase === 'reveal') {
+    const gains = room.players
+      .map((x) => ({ x, gain: x.score - (turnStart.current.get(x.id) ?? x.score) }))
+      .sort((a, b) => b.gain - a.gain);
+    overlay = (
+      <div className="overlay">
+        <div className="overlay-body">
+          <p className="muted">The word was</p>
+          <div className="solution">{room.round.solution ?? '…'}</div>
           <ol>
-            {[...p.finalScores].sort((a, b) => b.score - a.score).map((pl, _i, arr) => (
-              <li key={pl.id} className={pl.score === arr[0]!.score ? 'winner' : ''}>
-                <span>{pl.score === arr[0]!.score ? <span className="crown">👑</span> : null}</span>
-                <span>{pl.name}</span>
-                <span className="score">{pl.score}</span>
+            {gains.map(({ x, gain }) => (
+              <li key={x.id}>
+                <Avatar i={x.avatar} size={28} />
+                <span>{x.name}</span>
+                <span className={`gain ${gain ? '' : 'zero'}`}>{gain ? `+${gain}` : '0'}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+    );
+  } else if (phase === 'scoreboard') {
+    overlay = (
+      <div className="overlay">
+        <div className="overlay-body">
+          <h2>Scores so far</h2>
+          <ol>
+            {ranked(room.players).map((x, i) => (
+              <li key={x.id}>
+                <span>#{i + 1}</span>
+                <span>{x.name}</span>
+                <span className="gain">{x.score}</span>
+              </li>
+            ))}
+          </ol>
+          <p className="muted">
+            Round {room.round.round} of {room.round.totalRounds} is next
+          </p>
+        </div>
+      </div>
+    );
+  } else if (phase === 'finished' && p.finalScores) {
+    const order = ranked(p.finalScores);
+    const top = order[0]?.score ?? 0;
+    const champs = order.filter((x) => x.score === top);
+    overlay = (
+      <div className="overlay">
+        <Confetti />
+        <div className="overlay-body">
+          <div className="winner-banner">
+            {champs.length > 1
+              ? `It’s a tie: ${champs.map((c) => c.name).join(' & ')}!`
+              : `${champs[0]?.name ?? 'Nobody'} wins!`}
+          </div>
+          <ol className="podium-list">
+            {order.map((x, i) => (
+              <li key={x.id} className={x.score === top ? 'winner' : ''}>
+                <span>{x.score === top ? <span className="crown-bob">👑</span> : `#${i + 1}`}</span>
+                <span>{x.name}</span>
+                <span className="gain">{x.score}</span>
               </li>
             ))}
           </ol>
           {p.isHost ? (
-            <button className="primary wide" onClick={p.onPlayAgain} disabled={p.busy}>
+            <button className="primary big" onClick={p.onPlayAgain} disabled={p.busy}>
               Play again
             </button>
           ) : (
-            <p className="muted center">Waiting for the host to start another game.</p>
+            <p className="muted">Waiting for the host to start another game…</p>
           )}
         </div>
-      )}
+      </div>
+    );
+  }
 
-      <div className="play">
-        <Board
-          strokes={p.strokes}
-          generation={p.generation}
-          canDraw={canDraw}
-          onStroke={p.onStroke}
-          onUndo={p.onUndo}
-          onClear={p.onClear}
-        />
-        <div className="side">
-          <Scores
-            players={room.players}
-            drawerId={room.round.drawerId}
-            guessed={room.round.guessedPlayerIds}
-            youId={room.youId}
-          />
-          <Chat
-            messages={p.messages}
-            canGuess={canGuess}
-            placeholder={placeholder}
-            closeHint={p.closeHint}
-            onGuess={p.onGuess}
-          />
+  return (
+    <div className="game">
+      <div className="word-strip">
+        <div className="left">
+          <div
+            className={`clock ${hurry ? 'hurry' : ''} ${timed ? '' : 'idle'}`}
+            aria-label={timed ? `${p.secondsLeft} seconds left` : 'Paused'}
+          >
+            {timed ? p.secondsLeft : '⏸'}
+          </div>
+          <span className="round">
+            Round {Math.max(1, room.round.round)} of {room.round.totalRounds}
+          </span>
+        </div>
+        <div className="center">{center}</div>
+        <div className="right">
+          {phase === 'drawing' && !isDrawer && (
+            <button className="small" onClick={p.onReport} title="Report this word as offensive">
+              🚩 Report
+            </button>
+          )}
+          <InviteLink roomCode={room.roomCode} compact />
+          <button className="small" onClick={p.onLeave}>Leave</button>
         </div>
       </div>
-    </>
+
+      <div className="play">
+        <Scores
+          players={room.players}
+          drawerId={room.round.drawerId}
+          guessed={room.round.guessedPlayerIds}
+          youId={room.youId}
+        />
+        <div className="stage">
+          <Board
+            canDraw={canDraw}
+            onDrawStart={p.onDrawStart}
+            onDrawAppend={p.onDrawAppend}
+            onUndo={p.onUndo}
+            onClear={p.onClear}
+            overlay={overlay}
+          />
+        </div>
+        <Chat
+          messages={p.messages}
+          canGuess={canGuess}
+          placeholder={placeholder}
+          closeHint={p.closeHint}
+          onGuess={p.onGuess}
+        />
+      </div>
+    </div>
   );
 }

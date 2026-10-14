@@ -1,20 +1,30 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState, type ReactNode } from 'react';
 import type { Stroke } from '../generated/contract';
 import { PALETTE, SIZES } from '../lib/render';
 import { Canvas } from './Canvas';
 
 interface Props {
-  strokes: Stroke[];
-  generation: number;
   canDraw: boolean;
-  onStroke: (s: Stroke) => void;
+  onDrawStart: (s: Stroke) => void;
+  onDrawAppend: (id: string, points: number[]) => void;
   onUndo: () => void;
   onClear: () => void;
+  /** Shown over the canvas: word choice, "the word was…", scores. */
+  overlay?: ReactNode;
 }
 
 type Tool = 'brush' | 'eraser' | 'fill';
 
-export function Board({ strokes, generation, canDraw, onStroke, onUndo, onClear }: Props) {
+const TOOLS: { id: Tool; icon: string; label: string; key: string }[] = [
+  { id: 'brush', icon: '✏️', label: 'Brush', key: 'B' },
+  { id: 'eraser', icon: '🧽', label: 'Eraser', key: 'E' },
+  { id: 'fill', icon: '🪣', label: 'Fill', key: 'F' },
+];
+
+/** Memoized: it should re-render for tool changes, never for drawing traffic. */
+export const Board = memo(function Board({
+  canDraw, onDrawStart, onDrawAppend, onUndo, onClear, overlay,
+}: Props) {
   const [tool, setTool] = useState<Tool>('brush');
   const [color, setColor] = useState(PALETTE[0]!);
   const [size, setSize] = useState(SIZES[1]!);
@@ -35,21 +45,26 @@ export function Board({ strokes, generation, canDraw, onStroke, onUndo, onClear 
   }, [canDraw, onUndo]);
 
   return (
-    <div className="board">
+    <>
       <div className="canvas-wrap">
         <Canvas
-          strokes={strokes}
-          generation={generation}
           canDraw={canDraw}
           tool={tool}
           color={color}
           size={size}
-          onStroke={onStroke}
+          onStart={onDrawStart}
+          onAppend={onDrawAppend}
         />
+        {overlay}
       </div>
 
       {canDraw && (
         <div className="tools">
+          <span
+            className="current-color"
+            style={{ background: tool === 'eraser' ? '#ffffff' : color }}
+            title={tool === 'eraser' ? 'Eraser' : `Colour ${color}`}
+          />
           <div className="swatches">
             {PALETTE.map((c) => (
               <button
@@ -58,34 +73,43 @@ export function Board({ strokes, generation, canDraw, onStroke, onUndo, onClear 
                 style={{ background: c }}
                 onClick={() => {
                   setColor(c);
-                  setTool('brush');
+                  if (tool === 'eraser') setTool('brush');
                 }}
                 aria-label={`Colour ${c}`}
               />
             ))}
           </div>
-          <div className="row">
+          <div className="group">
             {SIZES.map((s, i) => (
               <button
                 key={s}
                 className={`sizer ${s === size ? 'on' : ''}`}
                 onClick={() => setSize(s)}
                 aria-label={`Brush size ${i + 1}`}
+                aria-pressed={s === size}
               >
-                <span style={{ width: 4 + i * 6, height: 4 + i * 6 }} />
+                <span style={{ width: 5 + i * 7, height: 5 + i * 7 }} />
               </button>
             ))}
-            <button className={tool === 'eraser' ? 'on' : ''} onClick={() => setTool('eraser')} title="Eraser (E)">
-              Eraser
-            </button>
-            <button className={tool === 'fill' ? 'on' : ''} onClick={() => setTool('fill')} title="Fill enclosed area (F)">
-              Fill
-            </button>
-            <button onClick={onUndo} title="Undo (Cmd/Ctrl+Z)">Undo</button>
-            <button onClick={onClear}>Clear</button>
+          </div>
+          <div className="group">
+            {TOOLS.map((t) => (
+              <button
+                key={t.id}
+                className={`icon ${tool === t.id ? 'on' : ''}`}
+                onClick={() => setTool(t.id)}
+                title={`${t.label} (${t.key})`}
+                aria-label={t.label}
+                aria-pressed={tool === t.id}
+              >
+                {t.icon}
+              </button>
+            ))}
+            <button className="icon" onClick={onUndo} title="Undo (Cmd/Ctrl+Z)" aria-label="Undo">↩️</button>
+            <button className="icon" onClick={onClear} title="Clear the canvas" aria-label="Clear the canvas">🗑️</button>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
-}
+});

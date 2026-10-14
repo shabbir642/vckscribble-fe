@@ -1,3 +1,4 @@
+import { SERVER_URL } from './server';
 import { socket } from './socket';
 
 type Source = 'render' | 'window' | 'promise' | 'socket';
@@ -9,8 +10,6 @@ interface Report {
   url?: string;
 }
 
-const SERVER =
-  import.meta.env['VITE_SERVER_URL'] ?? `http://${window.location.hostname}:3001`;
 
 /** Identical messages repeat endlessly in a render loop; report each once. */
 const seen = new Set<string>();
@@ -38,7 +37,7 @@ export function report(r: Report): void {
     }
     const body = JSON.stringify(payload);
     // keepalive lets the request outlive a page that is already unloading.
-    void fetch(`${SERVER}/api/client-log`, {
+    void fetch(`${SERVER_URL}/api/client-log`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,
