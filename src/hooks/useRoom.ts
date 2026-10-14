@@ -60,6 +60,8 @@ export interface UseRoom {
   join: (roomCode: string, name: string, avatar: number) => Promise<Result>;
   /** What an invite code points at, without joining. */
   peek: (roomCode: string) => Promise<Result<RoomPreview>>;
+  /** Host: kick a player. Anyone else: vote to kick (again to withdraw). */
+  kick: (playerId: string) => Promise<void>;
   /** Rename / re-avatar yourself; lobby only. */
   updateProfile: (patch: { name?: string; avatar?: number }) => Promise<Result>;
   updateSettings: (patch: Partial<Omit<RoomSettings, 'customWordCount'>>) => Promise<void>;
@@ -269,6 +271,11 @@ export function useRoom(): UseRoom {
       }
     };
     const onToast = (p: { message: string }) => setError(p.message);
+    const onKicked = (p: { by: 'host' | 'vote' }) => {
+      clearSession();
+      resetRoom();
+      setError(p.by === 'host' ? 'The host removed you from the room.' : 'The room voted to kick you out.');
+    };
 
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
@@ -289,6 +296,7 @@ export function useRoom(): UseRoom {
     socket.on('draw:clear', onClear);
     socket.on('draw:sync', onSync);
     socket.on('error:toast', onToast);
+    socket.on('room:kicked', onKicked);
     if (socket.connected) onConnect();
     else socket.connect();
 
@@ -312,6 +320,7 @@ export function useRoom(): UseRoom {
       socket.off('draw:clear', onClear);
       socket.off('draw:sync', onSync);
       socket.off('error:toast', onToast);
+      socket.off('room:kicked', onKicked);
     };
   }, [resetRoom]);
 
@@ -393,6 +402,15 @@ export function useRoom(): UseRoom {
         if (me) saveProfile({ name: patch.name ?? me.name, avatar: patch.avatar ?? me.avatar });
       }
       return r;
+    },
+    [request],
+  );
+
+  const kick = useCallback(
+    async (playerId: string) => {
+      await request<{ kicked: boolean; votes: number; needed: number }>((ack) =>
+        socket.emit('player:kick', { playerId }, ack),
+      );
     },
     [request],
   );
@@ -503,6 +521,7 @@ export function useRoom(): UseRoom {
     create,
     join,
     peek,
+    kick,
     updateProfile,
     updateSettings,
     setCustomWords,

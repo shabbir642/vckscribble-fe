@@ -76,6 +76,7 @@ export function App() {
           onClear={r.clear}
           onProfile={r.updateProfile}
           onGuess={r.sendGuess}
+          onKick={r.kick}
         />
       )}
 
@@ -105,6 +106,7 @@ export function App() {
           reactionFeed={r.reactionFeed}
           myReaction={r.myReaction}
           onReact={r.react}
+          onKick={r.kick}
         />
       )}
     </div>

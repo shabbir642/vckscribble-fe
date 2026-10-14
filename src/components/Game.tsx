@@ -38,6 +38,7 @@ interface Props {
   reactionFeed: { id: number; reaction: Reaction; name: string }[];
   myReaction: Reaction | null;
   onReact: (r: Reaction) => void;
+  onKick: (playerId: string) => void;
 }
 
 /** Letter counts per word of a masked phrase: "_ _ _   _ _" -> "3, 2". */
@@ -281,6 +282,8 @@ export function Game(p: Props) {
           drawerId={room.round.drawerId}
           guessed={room.round.guessedPlayerIds}
           youId={room.youId}
+          isHost={p.isHost}
+          onKick={p.onKick}
         />
         <div className="stage">
           <Board

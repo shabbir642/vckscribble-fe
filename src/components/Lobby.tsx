@@ -5,6 +5,7 @@ import { Chat } from './Chat';
 import type { RoomSnapshot } from '../hooks/useRoom';
 import { AVATARS, Avatar } from './Avatar';
 import { InviteLink } from './InviteLink';
+import { KickButton } from './KickButton';
 import { RoomSettingsPanel } from './RoomSettingsPanel';
 
 interface Props {
@@ -24,12 +25,13 @@ interface Props {
   onClear: () => void;
   onProfile: (patch: { name?: string; avatar?: number }) => Promise<Result>;
   onGuess: (text: string) => void;
+  onKick: (playerId: string) => void;
 }
 
 
 export function Lobby({
   room, isHost, busy, online, messages, onSettings, onCustomWords, onStart, onLeave,
-  onDrawStart, onDrawAppend, onUndo, onClear, onProfile, onGuess,
+  onDrawStart, onDrawAppend, onUndo, onClear, onProfile, onGuess, onKick,
 }: Props) {
   const present = room.players.filter((p) => p.connected).length;
   const me = room.players.find((p) => p.id === room.youId);
@@ -90,6 +92,13 @@ export function Lobby({
                 <span className="note">
                   {p.id === room.youId ? 'You' : !p.connected ? 'Away' : p.isHost ? 'Host' : ' '}
                 </span>
+                <KickButton
+                  player={p}
+                  youId={room.youId}
+                  isHost={isHost}
+                  present={present}
+                  onKick={onKick}
+                />
               </div>
             ))}
             {Array.from({ length: openSeats }, (_, i) => (

@@ -529,3 +529,17 @@ textarea {
   70% { opacity: 1; }
   100% { transform: translateY(-160px) scale(1); opacity: 0; }
 }
+
+/* ---------------------------------------------------------------- kicking */
+button.kick { font-size: 0.78rem; padding: 4px 9px; border-width: 2px; box-shadow: none; background: var(--paper); white-space: nowrap; }
+button.kick:hover:not(:disabled) { box-shadow: var(--shadow-sm); }
+button.kick.voted { background: var(--pink-soft); }
+button.kick.armed { background: var(--red); color: var(--paper); }
+button.kick.compact { padding: 3px 6px; font-size: 0.8rem; }
+/* In the scoreboard the boot sits over the badge, out of the way until you
+   reach for it (hover, or tap the row on a phone) or a vote is running. */
+.player-row { position: relative; }
+.player-row:focus-visible { outline: 3px solid var(--indigo); outline-offset: -3px; }
+.player-row .kick-slot { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); }
+.player-row .kick-slot:not(.live) { opacity: 0; pointer-events: none; transition: opacity 120ms; }
+.player-row:hover .kick-slot, .player-row:focus-within .kick-slot { opacity: 1; pointer-events: auto; }
