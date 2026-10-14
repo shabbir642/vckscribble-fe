@@ -84,6 +84,23 @@ export interface UseRoom {
 
 const MAX_MESSAGES = 200;
 
+/**
+ * Strokes this browser drew. The server echoes every stroke to the whole room,
+ * the drawer included (one broadcast is far cheaper for it than "everyone but
+ * you"); the canvas already painted ours locally, so the echo is skipped.
+ * Ids are random per stroke; the set is emptied whenever the canvas is, and
+ * capped in case it never is.
+ */
+const ownStrokes = new Set<string>();
+const MAX_OWN_STROKES = 5000;
+function markOwn(id: string): void {
+  if (ownStrokes.size >= MAX_OWN_STROKES) {
+    const oldest = ownStrokes.values().next().value;
+    if (oldest !== undefined) ownStrokes.delete(oldest);
+  }
+  ownStrokes.add(id);
+}
+
 export function useRoom(): UseRoom {
   const [connected, setConnected] = useState(socket.connected);
   const [room, setRoom] = useState<RoomSnapshot | null>(null);
@@ -258,12 +275,20 @@ export function useRoom(): UseRoom {
     };
 
     // Drawing traffic goes straight to the canvas's store, never to React.
-    const onStroke = (p: { stroke: Stroke }) => strokeStore.put(p.stroke);
-    const onPoints = (p: { strokeId: string; points: number[] }) =>
-      strokeStore.append(p.strokeId, p.points);
+    const onStroke = (p: { stroke: Stroke }) => {
+      if (!ownStrokes.has(p.stroke.id)) strokeStore.put(p.stroke);
+    };
+    const onPoints = (p: { strokeId: string; points: number[] }) => {
+      if (!ownStrokes.has(p.strokeId)) strokeStore.append(p.strokeId, p.points);
+    };
     const onUndo = (p: { strokeId: string }) => strokeStore.remove(p.strokeId);
-    const onClear = () => strokeStore.clear();
+    const onClear = () => {
+      ownStrokes.clear();
+      strokeStore.clear();
+    };
     const onSync = (p: { strokes: Stroke[] }) => {
+      // ownStrokes is kept: a stroke still being drawn across the resync
+      // must go on ignoring its echo.
       strokeStore.replaceAll(p.strokes);
       if (awaitingSync.current) {
         awaitingSync.current = false;
@@ -470,7 +495,9 @@ export function useRoom(): UseRoom {
 
   /** The canvas paints its own strokes locally; these only transmit. */
   const drawStart = useCallback((stroke: Stroke) => {
-    if (socket.connected) socket.emit('draw:stroke', { stroke });
+    if (!socket.connected) return;
+    markOwn(stroke.id);
+    socket.emit('draw:stroke', { stroke });
   }, []);
   const drawAppend = useCallback((id: string, points: number[]) => {
     if (socket.connected) socket.emit('draw:points', { id, points });
