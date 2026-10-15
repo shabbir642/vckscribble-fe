@@ -57,12 +57,31 @@ export const socket: GameSocket = io(startDirect ? DIRECT_URL : SERVER_URL, {
   timeout: startDirect ? 5000 : 20000,
 });
 
+// The manager opens every (re)connection to its `uri`: a plain field, typed private.
+const manager = socket.io as unknown as { uri: string };
+
+/** Whether this page is connected straight to the game server right now. */
+export const isDirect = () => DIRECT_URL !== null && manager.uri === DIRECT_URL;
+
+/**
+ * Back to the tab (or the network) after a drop: reconnect now. Left alone,
+ * the manager waits out its backoff — up to five seconds of "reconnecting"
+ * the moment someone looks at the game again. Only while it is trying anyway
+ * (`active`): a player who left stays disconnected.
+ */
+function reconnectNow(): void {
+  if (socket.connected || !socket.active) return;
+  socket.disconnect();
+  socket.connect();
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) reconnectNow();
+});
+window.addEventListener('online', reconnectNow);
+
 if (startDirect) {
-  // The manager opens every (re)connection to its `uri`. It is a plain field,
-  // typed private: switching it is how the fallback redirects the reconnects
-  // the manager already makes on its own (checked against socket.io-client
-  // 4.8; scripts in the backend repo exercise it).
-  const manager = socket.io as unknown as { uri: string };
+  // Switching the manager's uri is how the fallback redirects the reconnects
+  // the manager already makes on its own (checked against socket.io-client 4.8).
   let directWorked = false;
   socket.on('connect', () => {
     if (manager.uri === DIRECT_URL) directWorked = true;

@@ -48,8 +48,22 @@ function tone(freq: number, ms: number, type: OscillatorType = 'sine', gain = 0.
   }
 }
 
+/**
+ * A short buzz on phones that support it (Android; iOS Safari ignores it).
+ * Follows the sound toggle: "quiet" means quiet.
+ */
+function buzz(pattern: number | number[]) {
+  if (!enabled) return;
+  try {
+    navigator.vibrate?.(pattern);
+  } catch {
+    /* a nicety, like the sounds */
+  }
+}
+
 export const sfx = {
   correct() {
+    buzz([30, 50, 70]);
     tone(660, 90, 'sine');
     setTimeout(() => tone(880, 140, 'sine'), 90);
   },
@@ -57,10 +71,12 @@ export const sfx = {
     tone(520, 70, 'triangle', 0.035);
   },
   yourTurn() {
+    buzz([60, 80, 60]);
     tone(440, 110, 'sine');
     setTimeout(() => tone(587, 160, 'sine'), 110);
   },
   tick() {
+    buzz(15);
     tone(300, 50, 'square', 0.025);
   },
   roundEnd() {

@@ -23,6 +23,8 @@ import {
 } from '../lib/session';
 import { sfx } from '../lib/sound';
 import { strokeStore } from '../lib/strokes';
+import { dropPlayback, playPoints } from '../lib/playback';
+import { callAttention } from '../lib/attention';
 
 export interface RoomSnapshot {
   roomCode: string;
@@ -135,6 +137,7 @@ export function useRoom(): UseRoom {
     setWordOptions(null);
     setAssignedWord(null);
     setFinalScores(null);
+    dropPlayback();
     strokeStore.clear();
   }, []);
 
@@ -245,6 +248,7 @@ export function useRoom(): UseRoom {
     const onOptions = (p: { choices: WordChoice[]; allowCustom: boolean }) => {
       setWordOptions(p);
       sfx.yourTurn();
+      callAttention('✏️ Your turn to draw!');
     };
     const onAssigned = (p: { text: string }) => setAssignedWord(p.text);
     const onTick = (p: { secondsLeft: number }) => {
@@ -276,19 +280,27 @@ export function useRoom(): UseRoom {
 
     // Drawing traffic goes straight to the canvas's store, never to React.
     const onStroke = (p: { stroke: Stroke }) => {
-      if (!ownStrokes.has(p.stroke.id)) strokeStore.put(p.stroke);
+      if (ownStrokes.has(p.stroke.id)) return;
+      // A stroke sent again replaces the old one; its queued points are stale.
+      dropPlayback(p.stroke.id);
+      strokeStore.put(p.stroke);
     };
     const onPoints = (p: { strokeId: string; points: number[] }) => {
-      if (!ownStrokes.has(p.strokeId)) strokeStore.append(p.strokeId, p.points);
+      if (!ownStrokes.has(p.strokeId)) playPoints(p.strokeId, p.points);
     };
-    const onUndo = (p: { strokeId: string }) => strokeStore.remove(p.strokeId);
+    const onUndo = (p: { strokeId: string }) => {
+      dropPlayback(p.strokeId);
+      strokeStore.remove(p.strokeId);
+    };
     const onClear = () => {
       ownStrokes.clear();
+      dropPlayback();
       strokeStore.clear();
     };
     const onSync = (p: { strokes: Stroke[] }) => {
       // ownStrokes is kept: a stroke still being drawn across the resync
       // must go on ignoring its echo.
+      dropPlayback();
       strokeStore.replaceAll(p.strokes);
       if (awaitingSync.current) {
         awaitingSync.current = false;

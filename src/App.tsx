@@ -5,10 +5,13 @@ import { Lobby } from './components/Lobby';
 import { Logo } from './components/Logo';
 import { Toasts } from './components/Toasts';
 import { useRoom } from './hooks/useRoom';
+import { useWakeLock } from './hooks/useWakeLock';
 import { soundEnabled, toggleSound } from './lib/sound';
 
 export function App() {
   const r = useRoom();
+  // Screen stays on for as long as the player is in a room.
+  useWakeLock(r.room !== null);
   const [sound, setSound] = useState(soundEnabled);
   const inGame = r.room && r.room.round.phase !== 'lobby';
 

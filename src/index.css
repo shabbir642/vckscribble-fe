@@ -35,8 +35,8 @@
   --radius: 14px;
   --radius-sm: 10px;
 
-  --display: 'Fredoka', 'Nunito', ui-rounded, system-ui, sans-serif;
-  --body: 'Nunito', ui-rounded, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --display: 'Fredoka Variable', 'Nunito Variable', ui-rounded, system-ui, sans-serif;
+  --body: 'Nunito Variable', ui-rounded, system-ui, -apple-system, 'Segoe UI', sans-serif;
 
   color-scheme: light;
 }
