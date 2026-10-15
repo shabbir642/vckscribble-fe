@@ -10,7 +10,7 @@ import type {
   Stroke,
   WordChoice,
 } from '../generated/contract';
-import { socket } from '../lib/socket';
+import { connectFor, onShardOf, routeTo, socket } from '../lib/socket';
 import {
   clearSession,
   deviceId,
@@ -159,6 +159,12 @@ export function useRoom(): UseRoom {
         setReconnecting(false);
         return;
       }
+      // Connected to another game-server process (say, to join a different
+      // room): this seat is not here to resume, and is still valid.
+      if (!onShardOf(s.roomCode)) {
+        setReconnecting(false);
+        return;
+      }
       if (resuming.current) return;
       resuming.current = true;
       setReconnecting(true);
@@ -184,6 +190,12 @@ export function useRoom(): UseRoom {
           return;
         }
         setReconnecting(false);
+        if (r.code === 'WRONG_SHARD') {
+          // The server has a different number of processes than we thought:
+          // re-ask and reconnect to the right one, which resumes from there.
+          void routeTo(s.roomCode, true);
+          return;
+        }
         if (r.code === 'SEAT_IN_USE') {
           sharedSeatTaken.current = true;
           // Another tab is playing this seat. Leave it alone and start this
@@ -335,7 +347,9 @@ export function useRoom(): UseRoom {
     socket.on('error:toast', onToast);
     socket.on('room:kicked', onKicked);
     if (socket.connected) onConnect();
-    else socket.connect();
+    // To the process that owns the room this page is about: an invite link,
+    // else the seat to resume (see lib/socket.ts).
+    else void connectFor(roomFromUrl() ?? loadSession()?.roomCode ?? null);
 
     return () => {
       socket.off('connect', onConnect);
@@ -392,7 +406,8 @@ export function useRoom(): UseRoom {
       return new Promise((resolve) => {
         run((r) => {
           setBusy(false);
-          if (!r.ok) setError(r.message);
+          // WRONG_SHARD is handled by re-routing, not shown.
+          if (!r.ok && r.code !== 'WRONG_SHARD') setError(r.message);
           resolve(r);
         });
       });
@@ -414,22 +429,34 @@ export function useRoom(): UseRoom {
   const join = useCallback(
     async (roomCode: string, name: string, avatar: number) => {
       saveProfile({ name, avatar });
-      const r = await request<{ token: string }>((ack) =>
-        socket.emit('room:join', { roomCode, name, avatar, deviceId: deviceId() }, ack),
-      );
+      const attempt = () =>
+        request<{ token: string }>((ack) =>
+          socket.emit('room:join', { roomCode, name, avatar, deviceId: deviceId() }, ack),
+        );
+      await routeTo(roomCode);
+      let r = await attempt();
+      if (!r.ok && r.code === 'WRONG_SHARD') {
+        await routeTo(roomCode, true);
+        r = await attempt();
+        if (!r.ok && r.code === 'WRONG_SHARD') setError(r.message);
+      }
       if (r.ok) saveSession({ roomCode: roomCode.toUpperCase(), token: r.token });
       return r;
     },
     [request],
   );
 
-  const peek = useCallback(
-    (roomCode: string) =>
+  const peek = useCallback(async (roomCode: string) => {
+    const attempt = () =>
       new Promise<Result<RoomPreview>>((resolve) =>
         socket.emit('room:peek', { roomCode }, resolve),
-      ),
-    [],
-  );
+      );
+    await routeTo(roomCode);
+    const r = await attempt();
+    if (r.ok || r.code !== 'WRONG_SHARD') return r;
+    await routeTo(roomCode, true);
+    return attempt();
+  }, []);
 
   const updateProfile = useCallback(
     async (patch: { name?: string; avatar?: number }) => {

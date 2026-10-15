@@ -7,10 +7,22 @@ import { defineConfig } from 'vite';
  * works everywhere — localhost, a phone on the wifi, or a public tunnel —
  * without a second port the outside world can't reach.
  */
-const backend = {
+const backend: Record<string, object> = {
   '/api': { target: 'http://localhost:3001', changeOrigin: true },
   '/socket.io': { target: 'http://localhost:3001', changeOrigin: true, ws: true },
 };
+/**
+ * Several game-server processes (SHARDS=N on the backend): process N listens
+ * on 3001 + N and is reached at /s/N/socket.io, as behind Caddy in production.
+ */
+for (let n = 0; n < 8; n++) {
+  backend[`/s/${n}/socket.io`] = {
+    target: `http://localhost:${3001 + n}`,
+    changeOrigin: true,
+    ws: true,
+    rewrite: (path: string) => path.replace(`/s/${n}`, ''),
+  };
+}
 
 /**
  * Vite refuses requests for hostnames it doesn't know (DNS-rebinding
