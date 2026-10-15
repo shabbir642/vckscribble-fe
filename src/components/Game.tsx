@@ -126,6 +126,14 @@ export function Game(p: Props) {
         <div className="mask reveal"><Words text={p.assignedWord} /></div>
       </>
     );
+  } else if (phase === 'drawing' && youGuessed && p.assignedWord) {
+    // Solved: the word itself, not the blanks, for the rest of the turn.
+    center = (
+      <>
+        <div className="hint-label">You got it!</div>
+        <div className="mask reveal"><Words text={p.assignedWord} /></div>
+      </>
+    );
   } else if (phase === 'drawing' && room.round.maskedWord) {
     center = (
       <>
