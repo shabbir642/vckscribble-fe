@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { ChatMessage, Player, Reaction, Stroke } from '../generated/contract';
 import type { RoomSnapshot } from '../hooks/useRoom';
 import { Avatar } from './Avatar';
@@ -67,6 +67,14 @@ function Words({ text, masked = false }: { text: string; masked?: boolean }) {
 
 const ranked = (players: Player[]) => [...players].sort((a, b) => b.score - a.score);
 
+/**
+ * A ranked list on the canvas: past five players, two columns read top to
+ * bottom (1–5, then 6–10), so a full room fits on the drawing without scrolling.
+ */
+function listProps(n: number): { className?: string; style?: CSSProperties } {
+  return n > 5 ? { className: 'cols', style: { '--rows': Math.ceil(n / 2) } as CSSProperties } : {};
+}
+
 /** Ending everyone's game is one click too many to leave unconfirmed. */
 function RestartButton({ onRestart }: { onRestart: () => void }) {
   const [armed, setArmed] = useState(false);
@@ -94,6 +102,23 @@ export function Game(p: Props) {
   const drawer = room.players.find((x) => x.id === room.round.drawerId);
   const youGuessed = room.round.guessedPlayerIds.includes(room.youId);
 
+  // Phones: the strip's buttons fold into a menu, leaving the width to the word.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const stripRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const away = (e: PointerEvent) => {
+      if (!stripRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setMenuOpen(false);
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('pointerdown', away);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [menuOpen]);
+
   const canDraw = isDrawer && phase === 'drawing' && p.online;
   const canGuess = !isDrawer && phase === 'drawing' && p.online;
 
@@ -107,15 +132,16 @@ export function Game(p: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
+  // Short: on a phone the guess box is half the screen's width.
   const placeholder = !p.online
     ? 'Reconnecting…'
     : canDraw
-    ? 'No chatting while you draw'
-    : youGuessed
-      ? 'Chat with the other solvers'
-      : phase === 'drawing'
-        ? 'Type your guess here…'
-        : 'Guess when the drawing starts';
+      ? 'No chat while drawing'
+      : youGuessed
+        ? 'Chat with the solvers'
+        : phase === 'drawing'
+          ? 'Type your guess…'
+          : 'Guessing starts soon';
 
   /* ---------------------------------------------------------- word strip */
   let center: ReactNode = null;
@@ -207,14 +233,14 @@ export function Game(p: Props) {
     overlay = (
       <div className="overlay">
         <div className="overlay-body">
-          <p className="muted">The word was</p>
+          <p className="muted reveal-label">The word was</p>
           <div className="solution">{room.round.solution ?? '…'}</div>
           {(room.round.likes > 0 || room.round.dislikes > 0) && (
             <p className="verdict">
               {drawer?.name ?? 'The drawing'} got 👍 {room.round.likes} &nbsp;👎 {room.round.dislikes}
             </p>
           )}
-          <ol>
+          <ol {...listProps(gains.length)}>
             {gains.map(({ x, gain }) => (
               <li key={x.id}>
                 <Avatar i={x.avatar} size={28} />
@@ -231,7 +257,7 @@ export function Game(p: Props) {
       <div className="overlay">
         <div className="overlay-body">
           <h2>Scores so far</h2>
-          <ol>
+          <ol {...listProps(room.players.length)}>
             {ranked(room.players).map((x, i) => (
               <li key={x.id}>
                 <span>#{i + 1}</span>
@@ -277,7 +303,7 @@ export function Game(p: Props) {
   return (
     // data-* name the screen for automated checks (and devtools); no styling.
     <div className="game" data-phase={phase} data-role={isDrawer ? 'drawer' : 'guesser'}>
-      <div className="word-strip">
+      <div className={`word-strip ${menuOpen ? 'menu-open' : ''}`} ref={stripRef}>
         <div className="left">
           <div
             className={`clock ${hurry ? 'hurry' : ''} ${timed ? '' : 'idle'}`}
@@ -285,14 +311,35 @@ export function Game(p: Props) {
           >
             {timed ? p.secondsLeft : '⏸'}
           </div>
+          {/* "Round 1 of 3"; on a phone, "1/3". */}
           <span className="round">
-            Round {Math.max(1, room.round.round)} of {room.round.totalRounds}
+            <span className="round-word">Round </span>
+            {Math.max(1, room.round.round)}
+            <span className="round-of"> of </span>
+            <span className="round-slash" aria-hidden="true">/</span>
+            {room.round.totalRounds}
           </span>
         </div>
         <div className="center">{center}</div>
+        <button
+          className="small icon menu-toggle"
+          onClick={() => setMenuOpen((o) => !o)}
+          aria-expanded={menuOpen}
+          aria-label="More: invite, report, leave"
+        >
+          ⋯
+        </button>
         <div className="right">
           {phase === 'drawing' && !isDrawer && (
-            <button className="small" onClick={p.onReport} title="Report this word as offensive" aria-label="Report this word">
+            <button
+              className="small"
+              onClick={() => {
+                setMenuOpen(false);
+                p.onReport();
+              }}
+              title="Report this word as offensive"
+              aria-label="Report this word"
+            >
               🚩 <span className="btn-label">Report</span>
             </button>
           )}

@@ -1,4 +1,4 @@
-import { memo, useEffect, useState, type ReactNode } from 'react';
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Stroke } from '../generated/contract';
 import { PALETTE, SIZES } from '../lib/render';
 import { Canvas } from './Canvas';
@@ -28,6 +28,19 @@ export const Board = memo(function Board({
   const [tool, setTool] = useState<Tool>('brush');
   const [color, setColor] = useState(PALETTE[0]!);
   const [size, setSize] = useState(SIZES[1]!);
+  // Small screens: the palette is a pop-up behind the colour button, so the
+  // toolbar is one row and the canvas keeps the height (see .tools in CSS).
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const toolsRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!paletteOpen) return;
+    const away = (e: PointerEvent) => {
+      if (!toolsRef.current?.contains(e.target as Node)) setPaletteOpen(false);
+    };
+    document.addEventListener('pointerdown', away);
+    return () => document.removeEventListener('pointerdown', away);
+  }, [paletteOpen]);
+  const sizeIndex = Math.max(0, SIZES.indexOf(size));
 
   useEffect(() => {
     if (!canDraw) return;
@@ -46,26 +59,32 @@ export const Board = memo(function Board({
 
   return (
     <>
-      <div className="canvas-wrap">
-        <Canvas
-          canDraw={canDraw}
-          tool={tool}
-          color={color}
-          size={size}
-          onStart={onDrawStart}
-          onAppend={onDrawAppend}
-        />
-        {overlay}
+      {/* The box is the space the canvas may fill; the canvas keeps 4:3 inside it. */}
+      <div className="canvas-box">
+        <div className="canvas-wrap">
+          <Canvas
+            canDraw={canDraw}
+            tool={tool}
+            color={color}
+            size={size}
+            onStart={onDrawStart}
+            onAppend={onDrawAppend}
+          />
+          {overlay}
+        </div>
       </div>
 
       {canDraw && (
-        <div className="tools">
-          <span
+        <div className="tools" ref={toolsRef}>
+          <button
             className="current-color"
             style={{ background: tool === 'eraser' ? '#ffffff' : color }}
             title={tool === 'eraser' ? 'Eraser' : `Colour ${color}`}
+            aria-label="Choose a colour"
+            aria-expanded={paletteOpen}
+            onClick={() => setPaletteOpen((o) => !o)}
           />
-          <div className="swatches">
+          <div className={`swatches ${paletteOpen ? 'open' : ''}`}>
             {PALETTE.map((c) => (
               <button
                 key={c}
@@ -74,12 +93,21 @@ export const Board = memo(function Board({
                 onClick={() => {
                   setColor(c);
                   if (tool === 'eraser') setTool('brush');
+                  setPaletteOpen(false);
                 }}
                 aria-label={`Colour ${c}`}
               />
             ))}
           </div>
-          <div className="group">
+          {/* Small screens: one button stepping through the sizes. */}
+          <button
+            className="sizer size-cycle"
+            onClick={() => setSize(SIZES[(sizeIndex + 1) % SIZES.length]!)}
+            aria-label={`Brush size ${sizeIndex + 1} of ${SIZES.length}; tap for the next`}
+          >
+            <span style={{ width: 5 + sizeIndex * 7, height: 5 + sizeIndex * 7 }} />
+          </button>
+          <div className="group sizes">
             {SIZES.map((s, i) => (
               <button
                 key={s}

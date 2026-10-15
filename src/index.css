@@ -245,6 +245,28 @@ input[type='checkbox'] { width: 22px; height: 22px; accent-color: var(--green); 
 /* ------------------------------------------------------------------ game */
 .game { display: grid; gap: 14px; }
 
+/* The game fits the visible screen exactly: strip, drawing, players and the
+   guess box all in view, nothing to scroll mid-turn. Long lists (players,
+   guesses) scroll inside their own panels instead. --app-h is the visible
+   height, kept current by useViewportHeight (it shrinks for a phone keyboard). */
+.wrap.in-game {
+  height: var(--app-h, 100vh);
+  height: var(--app-h, 100dvh);
+  min-height: 320px;
+  display: flex; flex-direction: column;
+  padding-top: 12px; padding-bottom: 14px;
+}
+.wrap.in-game > .head { margin-bottom: 10px; flex: none; }
+/* Width is what lets the canvas grow on a laptop (its height is spoken for). */
+.wrap.in-game { max-width: 1500px; }
+.wrap.in-game .logo { font-size: 1.9rem; }
+.wrap.in-game .game {
+  flex: 1; min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  /* For sizes relative to the game's width (the canvas row on phones). */
+  container-type: inline-size;
+}
+
 .word-strip {
   display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px;
   background: var(--paper); border: var(--outline); border-radius: var(--radius-lg);
@@ -252,6 +274,9 @@ input[type='checkbox'] { width: 22px; height: 22px; accent-color: var(--green); 
 }
 .word-strip .left, .word-strip .right { display: flex; align-items: center; gap: 10px; }
 .word-strip .round { font-family: var(--display); font-weight: 600; font-size: 1.05rem; white-space: nowrap; }
+.word-strip .round-slash { display: none; }
+/* Phones only (see below): the strip's buttons fold into a menu. */
+.word-strip .menu-toggle { display: none; }
 .word-strip .center { text-align: center; min-width: 0; }
 .word-strip .hint-label { font-size: 0.85rem; font-weight: 800; color: var(--ink-soft); }
 
@@ -274,29 +299,24 @@ input[type='checkbox'] { width: 22px; height: 22px; accent-color: var(--green); 
   column-gap: 0.7em;
 }
 /* Within a word the blanks are separated by spaces, which HTML would
-   collapse or break at; a word stays whole. */
-.mask-word { white-space: pre; }
+   collapse; pre-wrap keeps them. The phrase wraps between words first (each
+   word is a flex item); only a word wider than the whole strip breaks inside. */
+.mask-word { white-space: pre-wrap; }
 .mask.reveal { color: var(--green-ink); letter-spacing: 0.06em; }
 .word-count { font-family: var(--display); font-size: 0.95rem; color: var(--ink-soft); margin-left: 4px; letter-spacing: 0; }
 
+/* Players | drawing | guesses, all exactly as tall as the space left under
+   the strip. The canvas takes the biggest 4:3 that fits its column; the two
+   lists scroll inside their panels however many players and guesses. */
 .play {
-  display: grid; grid-template-columns: 230px minmax(0, 1fr) 290px; gap: 14px; align-items: start;
+  display: grid; grid-template-columns: 230px minmax(0, 1fr) 290px;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 14px; align-items: stretch; min-height: 0;
 }
-/* The chat matches the play area's height and scrolls inside, instead of
-   growing the page with every guess: `contain: size` takes its content out of
-   the row's height, and stretch fills it back to the canvas column. */
-.play > .chat { align-self: stretch; contain: size; min-height: 0; height: auto; }
+.play > .players-panel { overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
+.play > .chat { min-height: 0; height: auto; }
+.play .messages { overscroll-behavior: contain; }
 @media (max-width: 1100px) { .play { grid-template-columns: 200px minmax(0, 1fr) 250px; } }
-@media (max-width: 900px) {
-  .play { grid-template-columns: 1fr 1fr; }
-  .play .stage { grid-column: 1 / -1; order: -1; }
-  .play > .chat { contain: none; height: 380px; }
-}
-@media (max-width: 600px) {
-  .play { grid-template-columns: 1fr; }
-  .word-strip { grid-template-columns: auto 1fr; }
-  .word-strip .right { grid-column: 1 / -1; justify-content: center; }
-}
 
 /* ------------------------------------------------------------ scoreboard */
 .players-panel { padding: 0; overflow: hidden; }
@@ -318,6 +338,15 @@ input[type='checkbox'] { width: 22px; height: 22px; accent-color: var(--green); 
 
 /* ----------------------------------------------------------------- stage */
 .stage { display: grid; gap: 12px; }
+.play .stage { grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
+/* The space the canvas may use; the canvas is the largest 4:3 inside it. */
+.play .canvas-box { min-height: 0; display: grid; justify-items: center; align-items: start; }
+/* The drawer's canvas sits on its toolbar. */
+.play .stage:has(.tools) .canvas-box { align-items: end; }
+@supports (container-type: size) {
+  .play .canvas-box { container-type: size; }
+  .play .canvas-wrap { width: min(100cqw, 100cqh * 4 / 3); margin: 0; }
+}
 .canvas-wrap {
   position: relative; aspect-ratio: 4 / 3;
   /* As wide as the column allows, but never taller than the screen leaves
@@ -327,6 +356,8 @@ input[type='checkbox'] { width: 22px; height: 22px; accent-color: var(--green); 
   margin-inline: auto;
   background: var(--paper); border: var(--outline); border-radius: var(--radius-lg);
   box-shadow: var(--shadow); overflow: hidden;
+  /* Overlays size themselves to the canvas, not the screen (see @container board). */
+  container: board / inline-size;
 }
 .canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
 .canvas.can-draw { cursor: crosshair; }
@@ -334,12 +365,14 @@ input[type='checkbox'] { width: 22px; height: 22px; accent-color: var(--green); 
 /* Everything between turns happens on the canvas, so the screen never jumps. */
 .overlay {
   position: absolute; inset: 0; z-index: 2;
-  display: grid; place-items: center; padding: 18px;
+  /* Centred while it fits; scrolls from the top when it does not (a small
+     canvas, a long scoreboard) instead of cutting off both ends. */
+  display: flex; overflow-y: auto; overscroll-behavior: contain; padding: 18px;
   background: rgba(30, 27, 75, 0.78);
   color: var(--paper); text-align: center;
   animation: fade 180ms ease-out both;
 }
-.overlay-body { display: grid; gap: 14px; justify-items: center; width: min(560px, 100%); animation: pop 340ms cubic-bezier(0.25, 1.4, 0.5, 1) both; }
+.overlay-body { margin: auto; display: grid; gap: 14px; justify-items: center; width: min(560px, 100%); animation: pop 340ms cubic-bezier(0.25, 1.4, 0.5, 1) both; }
 .overlay h2 { font-size: clamp(1.4rem, 3vw, 2rem); }
 .overlay .muted { color: #d5d2ff; }
 .overlay .solution {
@@ -352,19 +385,47 @@ input[type='checkbox'] { width: 22px; height: 22px; accent-color: var(--green); 
   background: var(--paper); color: var(--ink); border: 2.5px solid var(--ink);
   border-radius: var(--radius-sm); padding: 6px 10px; font-weight: 800; text-align: left;
 }
+.overlay ol.cols {
+  width: min(560px, 100%);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(var(--rows), auto); grid-auto-flow: column;
+}
+.overlay li > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .overlay li .gain { font-family: var(--display); color: var(--green-ink); }
 .overlay li .gain.zero { color: var(--ink-soft); }
 
-.choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; width: 100%; }
-@media (max-width: 600px) { .choices { grid-template-columns: 1fr; } }
+/* Side by side at every size: stacked, the third word fell off a phone's canvas. */
+.choices { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 12px; width: 100%; }
 .choice {
   display: grid; gap: 6px; padding: 16px 10px; background: var(--paper);
   font-size: 1.15rem; box-shadow: var(--shadow);
+  align-content: center; overflow-wrap: anywhere; line-height: 1.15;
 }
 .choice .level { font-family: var(--body); font-size: 0.8rem; font-weight: 800; color: var(--ink-soft); }
 .custom-word { display: flex; gap: 8px; width: 100%; }
 .custom-word input { flex: 1; }
 .overlay button.link { color: var(--yellow); }
+
+/* A small canvas (phones, landscape): the same overlays, tighter, so the
+   word choices and the scores fit on the drawing without scrolling. */
+@container board (max-width: 520px) {
+  .overlay { padding: 10px; }
+  .overlay-body { gap: 8px; }
+  .overlay h2 { font-size: 1.15rem; }
+  .overlay p { font-size: 0.85rem; }
+  .overlay .solution, .winner-banner { font-size: 1.5rem; }
+  /* The strip above already says "The word was". */
+  .overlay .reveal-label { display: none; }
+  .overlay .avatar { width: 52px !important; height: 52px !important; font-size: 30px !important; }
+  .choices { gap: 8px; }
+  .choice { padding: 10px 6px; font-size: 0.98rem; gap: 4px; box-shadow: var(--shadow-sm); border-radius: var(--radius-sm); }
+  .choice .level { font-size: 0.68rem; }
+  .overlay li { padding: 3px 8px; font-size: 0.85rem; gap: 8px; }
+  .overlay li .avatar { width: 22px !important; height: 22px !important; font-size: 13px !important; }
+  .overlay ol { gap: 4px; }
+  .custom-word input { padding: 8px 10px; }
+  .custom-word button { padding: 8px 12px; }
+}
 
 /* --------------------------------------------------------------- toolbar */
 .tools {
@@ -384,6 +445,35 @@ input[type='checkbox'] { width: 22px; height: 22px; accent-color: var(--green); 
 .current-color { width: 40px; height: 40px; border-radius: 50%; border: var(--outline); flex: none; }
 .sizer { width: 40px; height: 40px; padding: 0; display: grid; place-items: center; }
 .sizer span { display: block; background: var(--ink); border-radius: 50%; }
+button.current-color { padding: 0; box-shadow: none; cursor: default; }
+button.current-color:hover:not(:disabled) { transform: none; box-shadow: none; }
+.size-cycle { display: none; }
+
+/* Small screens: the toolbar is one row (colour, size, tools); the palette
+   pops up over the canvas from the colour button. */
+@media (max-width: 900px), (orientation: landscape) and (max-height: 520px) {
+  .play .tools { position: relative; flex-wrap: nowrap; justify-content: space-between; gap: 6px; padding: 6px 8px; border-radius: var(--radius); }
+  .play .tools .group { flex-wrap: nowrap; gap: 4px; }
+  .play .tools .sizes { display: none; }
+  .play .tools .size-cycle { display: grid; }
+  .play .tools button.icon { padding: 0; width: 36px; height: 36px; font-size: 1rem; display: grid; place-items: center; }
+  .play .tools .sizer, .play .tools .current-color { width: 36px; height: 36px; }
+  .play .tools button.current-color { cursor: pointer; box-shadow: var(--shadow-sm); }
+  .play .swatches {
+    display: none;
+    position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 25;
+    grid-template-columns: repeat(10, 28px); gap: 4px; padding: 8px;
+    background: var(--paper); border: var(--outline); border-radius: var(--radius); box-shadow: var(--shadow);
+  }
+  .play .swatches.open { display: grid; animation: pop 140ms ease-out both; }
+  .play .swatch { width: 28px; height: 28px; }
+}
+@media (max-width: 380px) {
+  .play .tools button.icon, .play .tools .sizer, .play .tools .current-color { width: 32px; height: 32px; }
+  .play .swatches { grid-template-columns: repeat(10, 26px); gap: 3px; }
+  .play .swatch { width: 26px; height: 26px; }
+}
+
 
 /* ------------------------------------------------------------------ chat */
 .chat { display: grid; grid-template-rows: auto 1fr auto; padding: 0; overflow: hidden; height: 100%; min-height: 360px; }
@@ -490,7 +580,6 @@ textarea {
 .custom-words .row-between { margin-top: 6px; }
 
 /* ---------------------------------------------------------------- podium */
-.overlay.finale { overflow-y: auto; place-items: start center; }
 .overlay.finale .overlay-body { padding: 8px 0 12px; }
 .podium { display: grid; gap: 14px; width: min(520px, 100%); justify-items: center; }
 .steps { display: flex; align-items: flex-end; justify-content: center; gap: 10px; width: 100%; }
@@ -571,10 +660,36 @@ button.kick.compact { padding: 3px 6px; font-size: 0.8rem; }
   .play { grid-template-columns: 260px minmax(0, 1fr) 320px; }
 }
 
-/* Tablets in portrait, narrow windows: full-width canvas with the guess box
-   still on screen beneath it. */
+/* Tablets in portrait, narrow windows, phones: the drawing on top at full
+   width, then the players and the guesses side by side filling the rest of
+   the screen, each scrolling inside. The canvas gives up height first when the
+   screen is short (or a phone keyboard is up), so the guess box never leaves. */
 @media (max-width: 900px) {
-  .play > .chat { height: 240px; }
+  .play {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    grid-template-rows: auto auto minmax(140px, 1fr);
+    grid-template-rows: minmax(0, calc(100cqw * 3 / 4)) auto minmax(clamp(104px, 30%, 210px), 1fr);
+    grid-template-areas: "canvas canvas" "tools tools" "players chat";
+    gap: 10px;
+  }
+  .play .stage { display: contents; }
+  .play .canvas-box { grid-area: canvas; }
+  .play .tools { grid-area: tools; }
+  .play > .players-panel { grid-area: players; }
+  .play > .chat { grid-area: chat; }
+  .play .stage:has(.tools) .canvas-box { align-items: start; }
+
+  /* Compact rows for the narrower players panel. */
+  .play .player-row { grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 6px; padding: 6px 8px; }
+  .play .player-row .rank { font-size: 0.8rem; }
+  .play .player-row .avatar { width: 28px !important; height: 28px !important; font-size: 16px !important; }
+  .play .player-row .pname { font-size: 0.88rem; }
+  .play .player-row .pts { font-size: 0.75rem; }
+  .play .player-row .badge { font-size: 1rem; }
+  .play .chat h3 { font-size: 1rem; padding: 8px 12px 0; margin-bottom: 4px; }
+  .play .msg { padding: 4px 12px; font-size: 0.9rem; }
+  .play .chat form { padding: 8px; }
+
   /* Lobby in one column: the host's Start button comes right after the
      players, not below the doodle pad. */
   .lobby .side { display: contents; }
@@ -586,31 +701,57 @@ button.kick.compact { padding: 3px 6px; font-size: 0.8rem; }
   .lobby .chat { order: 5; }
 }
 
-/* Phones in portrait. */
+/* Tablets, phones, landscape phones: the strip's buttons fold into a menu so
+   the hint gets the strip's width. */
+@media (max-width: 900px), (orientation: landscape) and (max-height: 520px) {
+  .word-strip { position: relative; grid-template-columns: auto minmax(0, 1fr) auto; }
+  .word-strip .menu-toggle { display: block; font-size: 1.2rem; padding: 6px 10px; align-self: center; }
+  .word-strip.menu-open .menu-toggle { background: var(--yellow); }
+  .word-strip .right {
+    display: none;
+    position: absolute; top: calc(100% + 6px); right: 0; z-index: 30;
+    flex-direction: column; align-items: stretch; gap: 8px;
+    min-width: 170px; padding: 10px;
+    background: var(--paper); border: var(--outline); border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .word-strip.menu-open .right { display: flex; animation: drop 160ms ease-out both; }
+  .word-strip .right button { width: 100%; text-align: left; padding: 10px 12px; }
+  .word-strip .right .invite-link { display: block; }
+}
+
+/* Phones in portrait: one-row strip (clock, the word, a menu), small header. */
 @media (max-width: 600px) {
   .wrap { padding: 12px 10px 32px; }
   .head { margin-bottom: 10px; }
-  .word-strip {
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-areas: "left right" "center center";
-    gap: 8px 10px; padding: 8px 10px;
-  }
-  .word-strip .left { grid-area: left; gap: 8px; }
-  .word-strip .right { grid-area: right; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
-  .word-strip .round { font-size: 0.85rem; }
-  .word-strip .center { grid-area: center; }
-  .word-strip .right .small { padding: 5px 7px; }
-  /* Icons only in the strip; the buttons keep their names for screen readers. */
-  .btn-label { display: none; }
-  .clock { width: 44px; height: 44px; font-size: 1.15rem; }
-  .mask { font-size: clamp(1.05rem, 5.2vw, 1.3rem); letter-spacing: 0.14em; }
-  /* Canvas, then the guess box right under it, then the scores: watch the
-     drawing and type a guess without scrolling. */
-  .play > .chat { order: 1; height: 230px; min-height: 0; }
-  .play > .players-panel { order: 2; }
-}
-@media (max-width: 600px) and (max-height: 700px) {
-  .play > .chat { height: 200px; }
+  .wrap.in-game { padding: 6px 8px 8px; }
+  .wrap.in-game > .head { margin-bottom: 6px; }
+  .wrap.in-game .logo { font-size: 1.3rem; -webkit-text-stroke-width: 1.5px; filter: drop-shadow(2px 2px 0 var(--ink)); }
+  .wrap.in-game .head .small.icon { padding: 4px 8px; font-size: 0.9rem; }
+  .wrap.in-game .game { gap: 8px; }
+  .play { gap: 8px; }
+
+  .word-strip { gap: 8px; padding: 6px 8px; border-radius: var(--radius); }
+  .word-strip .left { flex-direction: column; gap: 1px; }
+  .clock { width: 40px; height: 40px; font-size: 1.05rem; border-width: 2.5px; }
+  .word-strip .round { font-size: 0.72rem; color: var(--ink-soft); line-height: 1; }
+  .word-strip .round-word, .word-strip .round-of { display: none; }
+  .word-strip .round-slash { display: inline; }
+  .word-strip .hint-label { font-size: 0.72rem; line-height: 1.2; }
+  .mask { font-size: clamp(1rem, 5vw, 1.25rem); letter-spacing: 0.12em; column-gap: 0.5em; line-height: 1.25; }
+  .word-count { font-size: 0.8rem; }
+
+
+  .play > .players-panel { border-radius: var(--radius); }
+  /* The players panel is narrow: the order is the rank, and the badge rides
+     on the avatar, leaving the width to the name. */
+  .play .player-row { grid-template-columns: auto minmax(0, 1fr); padding: 6px 6px 6px 8px; }
+  .play .player-row .rank { display: none; }
+  .play .player-row .badge { position: absolute; left: 26px; top: 1px; font-size: 0.85rem; line-height: 1; }
+  .play .player-row .badge:empty { display: none; }
+  .play .chat input { padding: 9px 10px; }
+  .play > .chat { border-radius: var(--radius); }
+  .play .canvas-wrap { border-radius: var(--radius); }
 }
 
 /* Phones in landscape: the canvas on the left at the height available; the
@@ -620,24 +761,32 @@ button.kick.compact { padding: 3px 6px; font-size: 0.8rem; }
   .wrap { padding: 6px 12px 12px; }
   .head { margin-bottom: 6px; }
   .logo { font-size: 1.4rem; }
+  .wrap.in-game { padding: 4px 10px 6px; }
+  .wrap.in-game > .head { margin-bottom: 4px; }
+  .wrap.in-game .logo { font-size: 1.2rem; -webkit-text-stroke-width: 1.5px; }
+  .wrap.in-game .head .small.icon { padding: 3px 8px; font-size: 0.85rem; }
+  .wrap.in-game .game { gap: 6px; }
   .word-strip { padding: 4px 10px; gap: 8px; }
-  .clock { width: 38px; height: 38px; font-size: 1rem; }
-  .mask { font-size: 1.15rem; }
+  .clock { width: 36px; height: 36px; font-size: 1rem; border-width: 2.5px; }
+  .mask { font-size: 1.1rem; }
+  .word-strip .hint-label { font-size: 0.72rem; }
   .play {
-    grid-template-columns: auto minmax(200px, 1fr);
-    grid-template-rows: auto auto minmax(120px, 1fr);
-    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) minmax(210px, 36%);
+    grid-template-rows: auto minmax(0, 2fr) minmax(0, 3fr);
+    grid-template-areas: "canvas tools" "canvas players" "canvas chat";
+    gap: 8px;
   }
-  /* The stage's canvas and toolbar become cells of this grid. */
   .play .stage { display: contents; }
-  .play .canvas-wrap {
-    grid-column: 1; grid-row: 1 / -1; align-self: start;
-    width: min(62vw, calc((100vh - var(--canvas-reserve)) * 4 / 3));
-    width: min(62vw, calc((100dvh - var(--canvas-reserve)) * 4 / 3));
-  }
-  .play .tools { grid-column: 2; grid-row: 1; padding: 6px 8px; gap: 6px; }
-  .play > .players-panel { grid-column: 2; grid-row: 2; max-height: 30vh; overflow-y: auto; }
-  .play > .chat { grid-column: 2; grid-row: 3; height: auto; min-height: 120px; contain: size; }
+  .play .canvas-box { grid-area: canvas; align-items: start; }
+  .play .stage:has(.tools) .canvas-box { align-items: start; }
+  .play .tools { grid-area: tools; }
+  /* The toolbar is at the top of the side column: the palette opens downward,
+     over the players and guesses. */
+  .play .swatches { top: calc(100% + 8px); bottom: auto; left: auto; right: 0; }
+  .play > .players-panel { grid-area: players; }
+  .play > .chat { grid-area: chat; }
+  .play .chat h3 { display: none; }
+  .play .player-row { padding: 4px 8px; }
 }
 
 /* Touch screens: fingers, not cursors. */
