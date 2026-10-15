@@ -36,7 +36,7 @@ function report(): void {
   socket.emit('net:report', {
     rttP50: at(0.5),
     rttP95: at(0.95),
-    rttMax: Math.round(sorted.at(-1) ?? 0),
+    rttMax: Math.round(sorted[sorted.length - 1] ?? 0),
     samples: sorted.length,
     lost,
     reconnects,

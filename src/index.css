@@ -43,10 +43,19 @@
 
 * { box-sizing: border-box; }
 
-html { background: var(--indigo); }
+html {
+  background: var(--indigo);
+  /* iOS enlarges text when a phone turns to landscape; the layout already adapts. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+/* Taps act at once: no double-tap-to-zoom wait on controls (iOS, Android). */
+button, a, input, select, textarea, label, summary { touch-action: manipulation; }
 body {
   margin: 0;
   min-height: 100vh;
+  /* Mobile browsers' 100vh includes the toolbar that hides on scroll. */
+  min-height: 100dvh;
   color: var(--ink);
   font: 500 16px/1.45 var(--body);
   background-color: var(--indigo);
@@ -259,11 +268,14 @@ input[type='checkbox'] { width: 22px; height: 22px; accent-color: var(--green); 
 .mask {
   font-family: var(--display); font-weight: 700; font-size: clamp(1.3rem, 2.6vw, 1.9rem);
   letter-spacing: 0.22em;
-  /* The gap between words is a run of spaces, which HTML would collapse —
-     without this every word in a phrase reads as one long blank. */
-  white-space: pre;
-  overflow-wrap: anywhere;
+  /* One span per word (see Words in Game.tsx): a phrase wraps between its
+     words on a narrow screen instead of running off the edge. */
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline;
+  column-gap: 0.7em;
 }
+/* Within a word the blanks are separated by spaces, which HTML would
+   collapse or break at; a word stays whole. */
+.mask-word { white-space: pre; }
 .mask.reveal { color: var(--green-ink); letter-spacing: 0.06em; }
 .word-count { font-family: var(--display); font-size: 0.95rem; color: var(--ink-soft); margin-left: 4px; letter-spacing: 0; }
 
@@ -307,7 +319,12 @@ input[type='checkbox'] { width: 22px; height: 22px; accent-color: var(--green); 
 /* ----------------------------------------------------------------- stage */
 .stage { display: grid; gap: 12px; }
 .canvas-wrap {
-  position: relative; width: 100%; aspect-ratio: 4 / 3;
+  position: relative; aspect-ratio: 4 / 3;
+  /* As wide as the column allows, but never taller than the screen leaves
+     room for: the whole drawing is always in view without scrolling. */
+  width: min(100%, calc((100vh - var(--canvas-reserve)) * 4 / 3));
+  width: min(100%, calc((100dvh - var(--canvas-reserve)) * 4 / 3));
+  margin-inline: auto;
   background: var(--paper); border: var(--outline); border-radius: var(--radius-lg);
   box-shadow: var(--shadow); overflow: hidden;
 }
@@ -543,3 +560,92 @@ button.kick.compact { padding: 3px 6px; font-size: 0.8rem; }
 .player-row .kick-slot { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); }
 .player-row .kick-slot:not(.live) { opacity: 0; pointer-events: none; transition: opacity 120ms; }
 .player-row:hover .kick-slot, .player-row:focus-within .kick-slot { opacity: 1; pointer-events: auto; }
+
+/* ------------------------------------------------------- responsiveness */
+/* Height the page needs around the canvas (header, word strip, gaps). */
+:root { --canvas-reserve: 250px; }
+
+/* Big monitors: a wider page, so the canvas can grow (its height still caps it). */
+@media (min-width: 1500px) {
+  .wrap { max-width: 1500px; }
+  .play { grid-template-columns: 260px minmax(0, 1fr) 320px; }
+}
+
+/* Tablets in portrait, narrow windows: full-width canvas with the guess box
+   still on screen beneath it. */
+@media (max-width: 900px) {
+  .play > .chat { height: 240px; }
+  /* Lobby in one column: the host's Start button comes right after the
+     players, not below the doodle pad. */
+  .lobby .side { display: contents; }
+  .lobby-top { order: 0; }
+  .lobby-players { order: 1; }
+  .start-bar { order: 2; }
+  .lobby .settings { order: 3; }
+  .lobby-doodle { order: 4; }
+  .lobby .chat { order: 5; }
+}
+
+/* Phones in portrait. */
+@media (max-width: 600px) {
+  .wrap { padding: 12px 10px 32px; }
+  .head { margin-bottom: 10px; }
+  .word-strip {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: "left right" "center center";
+    gap: 8px 10px; padding: 8px 10px;
+  }
+  .word-strip .left { grid-area: left; gap: 8px; }
+  .word-strip .right { grid-area: right; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+  .word-strip .round { font-size: 0.85rem; }
+  .word-strip .center { grid-area: center; }
+  .word-strip .right .small { padding: 5px 7px; }
+  /* Icons only in the strip; the buttons keep their names for screen readers. */
+  .btn-label { display: none; }
+  .clock { width: 44px; height: 44px; font-size: 1.15rem; }
+  .mask { font-size: clamp(1.05rem, 5.2vw, 1.3rem); letter-spacing: 0.14em; }
+  /* Canvas, then the guess box right under it, then the scores: watch the
+     drawing and type a guess without scrolling. */
+  .play > .chat { order: 1; height: 230px; min-height: 0; }
+  .play > .players-panel { order: 2; }
+}
+@media (max-width: 600px) and (max-height: 700px) {
+  .play > .chat { height: 200px; }
+}
+
+/* Phones in landscape: the canvas on the left at the height available; the
+   drawer's toolbar, the scores and the chat stacked beside it. */
+@media (orientation: landscape) and (max-height: 520px) {
+  :root { --canvas-reserve: 150px; }
+  .wrap { padding: 6px 12px 12px; }
+  .head { margin-bottom: 6px; }
+  .logo { font-size: 1.4rem; }
+  .word-strip { padding: 4px 10px; gap: 8px; }
+  .clock { width: 38px; height: 38px; font-size: 1rem; }
+  .mask { font-size: 1.15rem; }
+  .play {
+    grid-template-columns: auto minmax(200px, 1fr);
+    grid-template-rows: auto auto minmax(120px, 1fr);
+    align-items: stretch;
+  }
+  /* The stage's canvas and toolbar become cells of this grid. */
+  .play .stage { display: contents; }
+  .play .canvas-wrap {
+    grid-column: 1; grid-row: 1 / -1; align-self: start;
+    width: min(62vw, calc((100vh - var(--canvas-reserve)) * 4 / 3));
+    width: min(62vw, calc((100dvh - var(--canvas-reserve)) * 4 / 3));
+  }
+  .play .tools { grid-column: 2; grid-row: 1; padding: 6px 8px; gap: 6px; }
+  .play > .players-panel { grid-column: 2; grid-row: 2; max-height: 30vh; overflow-y: auto; }
+  .play > .chat { grid-column: 2; grid-row: 3; height: auto; min-height: 120px; contain: size; }
+}
+
+/* Touch screens: fingers, not cursors. */
+@media (pointer: coarse) {
+  /* Below 16px, iOS Safari zooms the page in when a field is focused. */
+  input, textarea, select { font-size: 16px; }
+  .swatches { grid-template-columns: repeat(8, 30px); gap: 4px; }
+  .swatch { width: 30px; height: 30px; }
+  button.kick { min-height: 32px; }
+  button.link { padding-block: 8px; }
+}

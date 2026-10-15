@@ -49,6 +49,22 @@ function wordLengths(masked: string): string {
     .join(', ');
 }
 
+/**
+ * A word or phrase for the strip, one unbreakable span per word: a long phrase
+ * wraps between its words on a narrow screen instead of running off the edge
+ * (a masked word is a run of spaced blanks, which would otherwise never wrap).
+ */
+function Words({ text, masked = false }: { text: string; masked?: boolean }) {
+  const words = masked ? text.split(/\s{3,}/) : text.split(/\s+/);
+  return (
+    <>
+      {words.map((w, i) => (
+        <span key={i} className="mask-word">{w}</span>
+      ))}
+    </>
+  );
+}
+
 const ranked = (players: Player[]) => [...players].sort((a, b) => b.score - a.score);
 
 /** Ending everyone's game is one click too many to leave unconfirmed. */
@@ -64,8 +80,9 @@ function RestartButton({ onRestart }: { onRestart: () => void }) {
       className={`small ${armed ? 'accent' : ''}`}
       onClick={() => (armed ? onRestart() : setArmed(true))}
       title="End this game for everyone and go back to the lobby"
+      aria-label={armed ? 'Confirm restart' : 'Restart the game'}
     >
-      {armed ? 'Sure? Restart' : '↺ Restart'}
+      {armed ? 'Sure? Restart' : <>↺ <span className="btn-label">Restart</span></>}
     </button>
   );
 }
@@ -106,15 +123,15 @@ export function Game(p: Props) {
     center = (
       <>
         <div className="hint-label">Draw this</div>
-        <div className="mask reveal">{p.assignedWord}</div>
+        <div className="mask reveal"><Words text={p.assignedWord} /></div>
       </>
     );
   } else if (phase === 'drawing' && room.round.maskedWord) {
     center = (
       <>
         <div className="hint-label">{youGuessed ? 'You got it!' : 'Guess this'}</div>
-        <div className="mask">
-          {room.round.maskedWord}
+        <div className="mask" aria-label={`${wordLengths(room.round.maskedWord)} letters`}>
+          <Words text={room.round.maskedWord} masked />
           <span className="word-count">({wordLengths(room.round.maskedWord)})</span>
         </div>
       </>
@@ -123,7 +140,7 @@ export function Game(p: Props) {
     center = (
       <>
         <div className="hint-label">The word was</div>
-        <div className="mask reveal">{room.round.solution}</div>
+        <div className="mask reveal"><Words text={room.round.solution} /></div>
       </>
     );
   } else if (phase === 'selecting') {
@@ -250,7 +267,8 @@ export function Game(p: Props) {
   }
 
   return (
-    <div className="game">
+    // data-* name the screen for automated checks (and devtools); no styling.
+    <div className="game" data-phase={phase} data-role={isDrawer ? 'drawer' : 'guesser'}>
       <div className="word-strip">
         <div className="left">
           <div
@@ -266,13 +284,15 @@ export function Game(p: Props) {
         <div className="center">{center}</div>
         <div className="right">
           {phase === 'drawing' && !isDrawer && (
-            <button className="small" onClick={p.onReport} title="Report this word as offensive">
-              🚩 Report
+            <button className="small" onClick={p.onReport} title="Report this word as offensive" aria-label="Report this word">
+              🚩 <span className="btn-label">Report</span>
             </button>
           )}
           {p.isHost && phase !== 'finished' && <RestartButton onRestart={p.onRestart} />}
           <InviteLink roomCode={room.roomCode} compact />
-          <button className="small" onClick={p.onLeave}>Leave</button>
+          <button className="small" onClick={p.onLeave} aria-label="Leave the game">
+            🚪 <span className="btn-label">Leave</span>
+          </button>
         </div>
       </div>
 

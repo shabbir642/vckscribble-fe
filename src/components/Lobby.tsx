@@ -73,7 +73,7 @@ export function Lobby({
       </div>
 
       <div className="side">
-        <div className="card">
+        <div className="card lobby-players">
           <div className="row-between" style={{ marginBottom: 16 }}>
             <h3 style={{ margin: 0 }}>Players ({present}/{room.settings.maxPlayers})</h3>
             {me && !editing && (
@@ -147,7 +147,7 @@ export function Lobby({
           )}
         </div>
 
-        <div className="stage">
+        <div className="stage lobby-doodle">
           <div className="row-between" style={{ color: 'var(--paper)' }}>
             <h3 style={{ margin: 0 }}>Doodle while you wait</h3>
             <span style={{ fontWeight: 800, opacity: 0.85 }}>Everyone can draw here</span>

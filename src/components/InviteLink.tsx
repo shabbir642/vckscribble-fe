@@ -46,8 +46,13 @@ export function InviteLink({ roomCode, compact = false }: { roomCode: string; co
         onFocus={(e) => e.target.select()}
         aria-label="Invite link"
       />
-      <button className={`accent ${compact ? 'small' : ''}`} onClick={copy} title={url}>
-        {copied ? 'Copied!' : compact ? '🔗 Invite' : 'Copy link'}
+      <button
+        className={`accent ${compact ? 'small' : ''}`}
+        onClick={copy}
+        title={url}
+        aria-label={copied ? 'Invite link copied' : 'Copy invite link'}
+      >
+        {copied ? 'Copied!' : compact ? <>🔗 <span className="btn-label">Invite</span></> : 'Copy link'}
       </button>
     </div>
   );
