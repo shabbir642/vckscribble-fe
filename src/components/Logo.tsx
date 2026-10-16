@@ -1,15 +1,18 @@
+import mascot from '../assets/mascot.png';
+
 const NAME = 'Drawdle';
 const COLORS = ['#ffd23f', '#2bd46e', '#ff5fa2', '#8fe3ff', '#ff8a3d', '#ffffff'];
 const TILTS = [-6, 4, -3, 7, -5, 3, -7, 5, -2, 6, -4, 5, -3];
 
 /**
- * The game's mark: each letter in its own marker colour, slightly askew. A
- * space in the name becomes a real gap.
+ * The game's mark: the mascot, then each letter in its own marker colour,
+ * slightly askew. A space in the name becomes a real gap.
  */
 export function Logo({ big = false }: { big?: boolean }) {
   let n = 0;
   return (
     <span className={`logo ${big ? 'big' : ''}`} role="img" aria-label={NAME}>
+      <img className="logo-mark" src={mascot} alt="" aria-hidden="true" draggable={false} />
       {[...NAME].map((ch, i) => {
         if (ch === ' ') return <span key={i} className="logo-gap" aria-hidden="true" />;
         const k = n++;

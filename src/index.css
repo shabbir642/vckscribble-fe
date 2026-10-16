@@ -112,11 +112,13 @@ p { margin: 0; }
 }
 .logo span { display: inline-block; transform: rotate(var(--tilt)); }
 .logo .logo-gap { width: 0.32em; }
+/* The mascot, nib pointed at the name as if it had just written it. */
+.logo .logo-mark { height: 0.8em; width: auto; align-self: center; margin-right: 0.14em; transform: rotate(-6deg); }
 .logo.big { font-size: clamp(3rem, 9vw, 5.2rem); -webkit-text-stroke-width: 3px; filter: drop-shadow(5px 5px 0 var(--ink)); }
 .logo.big span { animation: hop 620ms cubic-bezier(0.3, 1.6, 0.5, 1) both; animation-delay: calc(var(--i) * 45ms); }
 .tagline {
   color: var(--paper); font-weight: 800; font-size: 1.1rem;
-  text-align: center; margin: 10px 0 26px; opacity: 0.92;
+  text-align: center; margin: 10px 0 26px; opacity: 0.92; text-wrap: balance;
 }
 
 .conn {
