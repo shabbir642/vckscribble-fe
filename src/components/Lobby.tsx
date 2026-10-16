@@ -66,7 +66,7 @@ export function Lobby({
           <div className="room-code">{room.roomCode}</div>
         </div>
         <div style={{ flex: '1 1 320px', maxWidth: 540 }}>
-          <div className="label" style={{ marginBottom: 6 }}>Send this link to your team</div>
+          <div className="label" style={{ marginBottom: 6 }}>Send this link to your friends</div>
           <InviteLink roomCode={room.roomCode} />
         </div>
         <button onClick={onLeave}>Leave room</button>

@@ -84,7 +84,7 @@ export function Home({ busy, connected, onCreate, onJoin, onPeek }: Props) {
     <div className="home">
       <div className="center">
         <Logo big />
-        <p className="tagline">Draw the corporate slang. Guess the corporate slang.</p>
+        <p className="tagline">Draw badly. Guess wildly. Laugh loudly.</p>
       </div>
 
       <div className="card">

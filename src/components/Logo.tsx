@@ -1,10 +1,10 @@
-const NAME = 'vmock skribble';
+const NAME = 'Drawdle';
 const COLORS = ['#ffd23f', '#2bd46e', '#ff5fa2', '#8fe3ff', '#ff8a3d', '#ffffff'];
 const TILTS = [-6, 4, -3, 7, -5, 3, -7, 5, -2, 6, -4, 5, -3];
 
 /**
- * The game's mark: each letter in its own marker colour, slightly askew, with
- * a real gap between the two words.
+ * The game's mark: each letter in its own marker colour, slightly askew. A
+ * space in the name becomes a real gap.
  */
 export function Logo({ big = false }: { big?: boolean }) {
   let n = 0;

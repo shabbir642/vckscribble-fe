@@ -159,7 +159,7 @@ export function RoomSettingsPanel({
               value={draft}
               rows={4}
               disabled={busy}
-              placeholder="Comma-separated, like: coffee run, stand-up, the office dog"
+              placeholder="Comma-separated, like: pizza night, the office dog, grandma's cat"
               onChange={(e) => {
                 setDraft(e.target.value);
                 setDirty(true);

@@ -53,7 +53,7 @@ export function WordPicker({
             <input
               value={own}
               onChange={(e) => setOwn(e.target.value)}
-              placeholder="Your own corporate slang"
+              placeholder="Or write your own word"
               maxLength={40}
               autoFocus
             />

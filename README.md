@@ -1,6 +1,6 @@
 # vckscribble-fe
 
-Frontend for **vckscribble** — a corporate-slang drawing-and-guessing game.
+Frontend for **Drawdle** — a corporate-slang drawing-and-guessing game.
 React + Vite + TypeScript. Web only; desktop-first.
 
 Backend: [`vckscribble-be`](https://github.com/shabbir642/vckscribble-be).

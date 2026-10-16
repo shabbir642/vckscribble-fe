@@ -1,7 +1,7 @@
 {
-  "name": "vmock skribble",
-  "short_name": "skribble",
-  "description": "Draw the corporate slang. Guess the corporate slang. A multiplayer drawing game for teams.",
+  "name": "Drawdle",
+  "short_name": "Drawdle",
+  "description": "Draw badly. Guess wildly. Laugh loudly. A free multiplayer drawing and guessing game: make a room, send the link, play in your browser.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
