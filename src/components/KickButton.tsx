@@ -8,7 +8,8 @@ import {
 /**
  * The host kicks outright (one tap to arm, a second to confirm); everyone
  * else votes, and a majority of the players present removes the player.
- * Tapping again withdraws your vote.
+ * Tapping again withdraws your vote. The host can't be kicked, so their row
+ * has no button.
  */
 export function KickButton({
   player, youId, isHost, present, onKick, compact = false,
@@ -29,7 +30,7 @@ export function KickButton({
     return () => clearTimeout(t);
   }, [armed]);
 
-  if (player.id === youId) return null;
+  if (player.id === youId || player.isHost) return null;
   const votes = player.kickVotes.length;
   const needed = kickVotesNeeded(present);
   const tally = votes > 0 ? ` ${votes}/${needed}` : '';
