@@ -25,7 +25,17 @@ export type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
  *   process that owns the room being joined; process N is on direct port
  *   DIRECT+N, or behind the proxy at /s/N/socket.io.
  */
-const directHost = import.meta.env['VITE_DIRECT_SOCKET_HOST'] as string | undefined;
+/**
+ * The site names the game server answers on directly (comma-separated; the
+ * first is the default). A page connects to its own name, www. or not, so a
+ * player on one of our sites never depends on another.
+ */
+const directHosts = ((import.meta.env['VITE_DIRECT_SOCKET_HOST'] as string | undefined) ?? '')
+  .split(',')
+  .map((h) => h.trim())
+  .filter(Boolean);
+const pageHost = window.location.hostname.replace(/^www\./, '');
+const directHost = directHosts.find((h) => h === pageHost) ?? directHosts[0];
 const directBase = Number((import.meta.env['VITE_DIRECT_SOCKET_PORT'] as string | undefined) || 8443);
 const directAvailable =
   Boolean(directHost) && window.location.protocol === 'https:' && SERVER_URL === window.location.origin;
