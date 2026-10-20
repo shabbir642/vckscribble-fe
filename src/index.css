@@ -820,3 +820,12 @@ body[data-screen='room'] .about { display: none; }
 .about ol + p { margin-top: 12px; }
 .about-nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px; }
 .about .about-nav a { color: var(--paper); }
+.about h3 { font-size: 1.05rem; margin: 14px 0 4px; }
+.about .share { text-align: center; color: var(--paper); }
+.about .share h2 { font-size: 1.15rem; margin-bottom: 10px; }
+.share-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.about .share-row a {
+  color: var(--ink); background: var(--paper); text-decoration: none;
+  border: 2px solid var(--ink); border-radius: 999px; box-shadow: var(--shadow-sm);
+  padding: 6px 14px; font-weight: 800;
+}
