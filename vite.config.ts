@@ -1,5 +1,6 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+import { PAGES, siteChrome } from './site/chrome';
 
 /**
  * The backend sits behind the same origin as the page, in dev as in
@@ -32,7 +33,7 @@ for (let n = 0; n < 8; n++) {
 const allowedHosts = ['.trycloudflare.com', '.vmock.fun'];
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), siteChrome()],
   server: {
     // Listen on every interface so others on the wifi can reach the dev server.
     host: true,
@@ -48,5 +49,12 @@ export default defineConfig({
     proxy: backend,
     allowedHosts,
   },
-  build: { outDir: 'dist', sourcemap: true },
+  build: {
+    outDir: 'dist',
+    sourcemap: true,
+    // The game, and the guide pages beside it (site/chrome.ts).
+    rollupOptions: {
+      input: ['index.html', ...PAGES.map((p) => p.file)],
+    },
+  },
 });

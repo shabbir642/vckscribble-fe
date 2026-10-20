@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://drawdle.in/</loc>
-  </url>
+  <url><loc>https://drawdle.in/</loc></url>
+  <url><loc>https://drawdle.in/online-pictionary</loc></url>
+  <url><loc>https://drawdle.in/skribbl-alternative</loc></url>
+  <url><loc>https://drawdle.in/how-to-play</loc></url>
+  <url><loc>https://drawdle.in/indian-pictionary-words</loc></url>
 </urlset>

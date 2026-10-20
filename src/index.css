@@ -816,3 +816,7 @@ body[data-screen='room'] .about { display: none; }
 .about .faq summary { cursor: pointer; font-weight: 800; }
 .about .faq details p { margin-top: 6px; color: var(--ink-soft); }
 .about-foot { color: var(--paper); opacity: 0.75; font-size: 0.8rem; text-align: center; }
+.about a { color: var(--indigo); font-weight: 800; }
+.about ol + p { margin-top: 12px; }
+.about-nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px; }
+.about .about-nav a { color: var(--paper); }
