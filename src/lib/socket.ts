@@ -26,16 +26,21 @@ export type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
  *   DIRECT+N, or behind the proxy at /s/N/socket.io.
  */
 /**
- * The site names the game server answers on directly (comma-separated; the
- * first is the default). A page connects to its own name, www. or not, so a
- * player on one of our sites never depends on another.
+ * The names the game server answers on directly (comma-separated; the first
+ * is the default). A page uses the one for its own site: the same name, or a
+ * subdomain of it — the site itself can sit behind a CDN while the game
+ * connects to an unproxied name like play.<site>. Either way a player on one
+ * of our sites never depends on another.
  */
 const directHosts = ((import.meta.env['VITE_DIRECT_SOCKET_HOST'] as string | undefined) ?? '')
   .split(',')
   .map((h) => h.trim())
   .filter(Boolean);
 const pageHost = window.location.hostname.replace(/^www\./, '');
-const directHost = directHosts.find((h) => h === pageHost) ?? directHosts[0];
+const directHost =
+  directHosts.find((h) => h === pageHost) ??
+  directHosts.find((h) => h.endsWith(`.${pageHost}`)) ??
+  directHosts[0];
 const directBase = Number((import.meta.env['VITE_DIRECT_SOCKET_PORT'] as string | undefined) || 8443);
 const directAvailable =
   Boolean(directHost) && window.location.protocol === 'https:' && SERVER_URL === window.location.origin;
