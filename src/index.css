@@ -800,3 +800,19 @@ button.kick.compact { padding: 3px 6px; font-size: 0.8rem; }
   button.kick { min-height: 32px; }
   button.link { padding-block: 8px; }
 }
+
+/* ----------------------------------------------------------------- about */
+/* The intro under the home screen: plain HTML in index.html, so it reads the
+   same before the app has loaded. A room has no use for it. */
+.about { max-width: 520px; margin: 0 auto; padding: 0 16px 48px; display: grid; gap: 16px; }
+body[data-screen='room'] .about { display: none; }
+.about h1 { font-size: 1.6rem; margin-bottom: 10px; }
+.about h2 { font-size: 1.3rem; margin-bottom: 10px; }
+.about p + p { margin-top: 10px; }
+.about ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
+.about li::marker { font-family: var(--display); font-weight: 700; color: var(--indigo); }
+.about .faq details { border-top: 2px dashed #cfcbe9; padding: 10px 0; }
+.about .faq details:last-of-type { padding-bottom: 0; }
+.about .faq summary { cursor: pointer; font-weight: 800; }
+.about .faq details p { margin-top: 6px; color: var(--ink-soft); }
+.about-foot { color: var(--paper); opacity: 0.75; font-size: 0.8rem; text-align: center; }

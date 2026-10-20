@@ -1,11 +1,27 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-IN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#4231E0" />
-    <meta name="description" content="Draw badly. Guess wildly. Laugh loudly. A free multiplayer drawing and guessing game: make a room, send the link, play in your browser." />
-    <title>Drawdle</title>
+    <title>Drawdle: Free Online Pictionary Game with Friends | Draw &amp; Guess</title>
+    <meta name="description" content="Play Pictionary online free with friends. Drawdle is a multiplayer draw and guess game like skribbl.io: no sign-up, up to 16 players, your own words, works on phones." />
+    <!-- One address for search engines, whichever domain served the page:
+         vmock.fun and room links (?room=CODE) are the same page. -->
+    <link rel="canonical" href="https://drawdle.in/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Drawdle" />
+    <meta property="og:url" content="https://drawdle.in/" />
+    <meta property="og:title" content="Drawdle: Pictionary online with friends" />
+    <meta property="og:description" content="Draw badly. Guess wildly. Laugh loudly. Make a room, send the link, play in your browser. Free, no sign-up." />
+    <meta property="og:image" content="https://drawdle.in/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Drawdle, the free online drawing and guessing game" />
+    <meta property="og:locale" content="en_IN" />
+    <meta name="twitter:card" content="summary_large_image" />
+
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
@@ -15,9 +31,112 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Drawdle" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "name": "Drawdle",
+            "alternateName": ["Drawdle online Pictionary", "drawdle.in"],
+            "url": "https://drawdle.in/"
+          },
+          {
+            "@type": ["VideoGame", "WebApplication"],
+            "name": "Drawdle",
+            "url": "https://drawdle.in/",
+            "image": "https://drawdle.in/og.png",
+            "description": "A free multiplayer drawing and guessing game, like online Pictionary: one player draws, everyone else guesses in the chat.",
+            "genre": ["Party game", "Drawing game", "Word game"],
+            "gamePlatform": "Web browser",
+            "applicationCategory": "GameApplication",
+            "operatingSystem": "Any",
+            "playMode": "MultiPlayer",
+            "numberOfPlayers": { "@type": "QuantitativeValue", "minValue": 2, "maxValue": 16 },
+            "inLanguage": "en",
+            "isAccessibleForFree": true,
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "INR" }
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+
+    <!-- Plain HTML on purpose: readable before the app loads, by people and
+         by search engines that don't run scripts. Hidden inside a room. -->
+    <main id="about" class="about">
+      <section class="card">
+        <h1>Pictionary online, free, with friends</h1>
+        <p>
+          Drawdle is a multiplayer drawing and guessing game. One player draws a word, everyone
+          else races to guess it in the chat. Make a room, send the link on WhatsApp or Slack, and
+          play in your browser on a phone or a laptop. No app, no sign-up, no ads.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>How to play</h2>
+        <ol>
+          <li>Type your name and create a room.</li>
+          <li>Share the invite link. Up to 16 people can join.</li>
+          <li>On your turn, pick one of the words offered and draw it.</li>
+          <li>Everyone else types guesses. The sooner you guess right, the more points you get, and the drawer scores for every right guess.</li>
+          <li>Everyone draws once each round. Most points after the last round wins.</li>
+        </ol>
+      </section>
+
+      <section class="card">
+        <h2>Words for every group</h2>
+        <p>
+          Pick the word packs your group will enjoy: everyday things, animals, food and drink,
+          places, nature, sports, tech, jobs, fantasy, actions, office stuff and corporate slang.
+          Set the difficulty from easy doodles to properly abstract.
+        </p>
+        <p>
+          Or add up to 500 of your own words: Bollywood films, cricketers, office in-jokes, this
+          week's class vocabulary. Play with only your words, or mix them in.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Looking for a skribbl.io alternative?</h2>
+        <p>
+          If you have played skribbl.io, you already know how Drawdle works. Rooms are private to
+          the people you invite, the screen fits a phone even with the keyboard open, the host
+          sets rounds, draw time, hints and words, and nobody has to make an account.
+        </p>
+      </section>
+
+      <section class="card faq">
+        <h2>Questions</h2>
+        <details>
+          <summary>Is Drawdle free?</summary>
+          <p>Yes. Every game, every word pack, no ads.</p>
+        </details>
+        <details>
+          <summary>Do I need to download anything?</summary>
+          <p>No. It runs in any modern browser. On a phone you can add it to your home screen to open it like an app.</p>
+        </details>
+        <details>
+          <summary>How many people can play?</summary>
+          <p>From 2 to 16 in one room. It is most fun with 4 to 10.</p>
+        </details>
+        <details>
+          <summary>Can we play over a video call?</summary>
+          <p>Yes. Everyone opens the invite link on their own device and talks on Zoom, Meet, Teams or Discord as usual. It works well for remote team games and virtual hangouts.</p>
+        </details>
+        <details>
+          <summary>Can I use my own words?</summary>
+          <p>Yes. The host can add up to 500 custom words before the game, and the drawer can be allowed to write their own word on their turn.</p>
+        </details>
+      </section>
+
+      <p class="about-foot">Drawdle is not affiliated with skribbl.io or with Mattel, which owns the Pictionary trademark.</p>
+    </main>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

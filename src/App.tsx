@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Game } from './components/Game';
 import { Home } from './components/Home';
 import { Lobby } from './components/Lobby';
@@ -17,6 +17,11 @@ export function App() {
   const inGame = Boolean(r.room && r.room.round.phase !== 'lobby');
   // The game screen fits the visible screen exactly: no scrolling mid-turn.
   useViewportHeight(inGame);
+  // The page's plain-HTML intro (index.html, #about) is for the home screen.
+  const onHome = !r.room && !r.reconnecting;
+  useEffect(() => {
+    document.body.dataset.screen = onHome ? 'home' : 'room';
+  }, [onHome]);
 
   return (
     <div className={`wrap ${inGame ? 'in-game' : ''}`}>

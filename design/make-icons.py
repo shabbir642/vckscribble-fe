@@ -7,7 +7,7 @@ colour at any size.
 Usage (needs Pillow):  python3 design/make-icons.py
 """
 from pathlib import Path
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
 INDIGO = (66, 49, 224, 255)  # --indigo / theme-color #4231E0
@@ -83,4 +83,51 @@ fav = [icon(n, 0.94, 0.05, 0.22, max(1.6, n / 16)) for n in (16, 32, 48)]
 fav[2].save(ROOT / 'public/favicon.ico', sizes=[(16, 16), (32, 32), (48, 48)], append_images=fav[:2])
 # Logo mark beside the wordmark, at 2x the size it is shown.
 sticker(280, 0.03, 9).save(ROOT / 'src/assets/mascot.png', optimize=True)
+
+
+def font(name: str, size: int, weight: int) -> ImageFont.FreeTypeFont:
+    f = ImageFont.truetype(str(ROOT / f'node_modules/@fontsource-variable/{name}/files/{name}-latin-wght-normal.woff2'), size)
+    f.set_variation_by_axes([weight])
+    return f
+
+
+def share_image() -> Image.Image:
+    """
+    The 1200x630 picture shown when a link is shared (og:image): the mascot
+    and the wordmark as on the home screen, and what the game is in words.
+    """
+    W, H = 1200, 630
+    INK = (30, 27, 75, 255)  # --ink
+    colors = ['#ffd23f', '#2bd46e', '#ff5fa2', '#8fe3ff', '#ff8a3d', '#ffffff', '#ffd23f']
+    tilts = [-6, 4, -3, 7, -5, 3, -7]
+    out = Image.new('RGBA', (W, H), INDIGO)
+
+    mascot = sticker(330 * 2, 0.03, 18)
+    mascot = mascot.resize((mascot.width // 2, mascot.height // 2), Image.LANCZOS).rotate(6, Image.BICUBIC, expand=True)
+    out.alpha_composite(mascot, (70, (H - mascot.height) // 2))
+
+    # Wordmark: each letter its own colour, outlined in ink, askew, with a
+    # hard offset shadow.
+    big = font('fredoka', 168, 700)
+    x, base = 440, 115
+    for ch, color, tilt in zip('Drawdle', colors, tilts):
+        box = big.getbbox(ch, stroke_width=7)
+        w, h = box[2] + 20, box[3] + 20
+        def glyph(fill, stroke):
+            g = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+            ImageDraw.Draw(g).text((10, 10), ch, font=big, fill=fill, stroke_width=7, stroke_fill=stroke)
+            return g.rotate(-tilt, Image.BICUBIC, expand=True)
+        shadow, letter = glyph(INK, INK), glyph(color, INK)
+        out.alpha_composite(shadow, (x + 8, base + 8 - (shadow.height - h) // 2))
+        out.alpha_composite(letter, (x, base - (letter.height - h) // 2))
+        x += round(big.getlength(ch)) + 4
+
+    d = ImageDraw.Draw(out)
+    d.text((446, 337), 'Draw badly. Guess wildly.\nLaugh loudly.', font=font('nunito', 44, 800), fill='white', spacing=10)
+    d.text((446, 465), 'Free online Pictionary with friends', font=font('nunito', 32, 700), fill=(255, 255, 255, 215))
+    d.text((446, 511), 'drawdle.in', font=font('fredoka', 36, 600), fill='#ffd23f')
+    return out.convert('RGB')
+
+
+share_image().save(ROOT / 'public/og.png', optimize=True)
 print('icons written')
