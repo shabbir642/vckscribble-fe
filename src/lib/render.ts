@@ -142,7 +142,13 @@ export const PALETTE = [
   '#4dabf7', '#9775fa', '#f783ac', '#c69466', '#ffc9a3', '#b2f2bb', '#a5d8ff', '#ffd6e7',
 ];
 
-export const SIZES = [0.006, 0.014, 0.032];
+/**
+ * Brush and eraser widths, as a fraction of the canvas width (the server takes
+ * 0.001 to 0.2): from fine detail to a bold marker.
+ */
+export const SIZES = [0.004, 0.008, 0.014, 0.024, 0.04];
+/** The middle one, which the toolbar starts on. */
+export const DEFAULT_SIZE = 0.014;
 
 function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.replace('#', ''), 16);

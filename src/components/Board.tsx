@@ -1,7 +1,8 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Stroke } from '../generated/contract';
-import { PALETTE, SIZES } from '../lib/render';
-import { Canvas } from './Canvas';
+import { DEFAULT_SIZE, PALETTE, SIZES } from '../lib/render';
+import { Canvas, type CanvasTool } from './Canvas';
+import { DRAW_TOOLS, DrawToolMenu, ToolIcon, isDrawTool, toolTitle, type DrawTool } from './DrawTools';
 
 interface Props {
   canDraw: boolean;
@@ -13,21 +14,44 @@ interface Props {
   overlay?: ReactNode;
 }
 
-type Tool = 'brush' | 'eraser' | 'fill';
+type Tool = CanvasTool;
 
-const TOOLS: { id: Tool; icon: string; label: string; key: string }[] = [
-  { id: 'brush', icon: '✏️', label: 'Brush', key: 'B' },
+const TOOLS: { id: 'eraser' | 'fill'; icon: string; label: string; key: string }[] = [
   { id: 'eraser', icon: '🧽', label: 'Eraser', key: 'E' },
   { id: 'fill', icon: '🪣', label: 'Fill', key: 'F' },
 ];
+
+/** Desktop shortcuts: a letter per tool, as each button's title says. */
+const KEYS = new Map<string, Tool>([...DRAW_TOOLS, ...TOOLS].map((t) => [t.key.toLowerCase(), t.id]));
+
+/**
+ * A size's dot in the picker: the bigger the brush, the bigger the dot. On a
+ * square-root scale, so the finest still shows and the boldest still fits a
+ * phone's toolbar button.
+ */
+function dot(size: number) {
+  const lo = Math.sqrt(SIZES[0]!);
+  const hi = Math.sqrt(SIZES[SIZES.length - 1]!);
+  const px = Math.round(4 + ((Math.sqrt(size) - lo) / (hi - lo)) * 16);
+  return { width: px, height: px };
+}
+
+/** Keys typed into a field are words, not shortcuts. */
+const typing = (t: EventTarget | null) =>
+  t instanceof HTMLInputElement ||
+  t instanceof HTMLTextAreaElement ||
+  t instanceof HTMLSelectElement ||
+  (t instanceof HTMLElement && t.isContentEditable);
 
 /** Memoized: it should re-render for tool changes, never for drawing traffic. */
 export const Board = memo(function Board({
   canDraw, onDrawStart, onDrawAppend, onUndo, onClear, overlay,
 }: Props) {
   const [tool, setTool] = useState<Tool>('brush');
+  // The drawing tool to go back to from the eraser or the fill.
+  const [drawTool, setDrawTool] = useState<DrawTool>('brush');
   const [color, setColor] = useState(PALETTE[0]!);
-  const [size, setSize] = useState(SIZES[1]!);
+  const [size, setSize] = useState(DEFAULT_SIZE);
   // Small screens: the palette is a pop-up behind the colour button, so the
   // toolbar is one row and the canvas keeps the height (see .tools in CSS).
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -37,25 +61,53 @@ export const Board = memo(function Board({
     const away = (e: PointerEvent) => {
       if (!toolsRef.current?.contains(e.target as Node)) setPaletteOpen(false);
     };
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setPaletteOpen(false);
     document.addEventListener('pointerdown', away);
-    return () => document.removeEventListener('pointerdown', away);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('pointerdown', away);
+      document.removeEventListener('keydown', esc);
+    };
   }, [paletteOpen]);
+  // The toolbar goes when the pen does; the palette must not pop open with it
+  // at the next turn.
+  useEffect(() => {
+    if (!canDraw) setPaletteOpen(false);
+  }, [canDraw]);
   const sizeIndex = Math.max(0, SIZES.indexOf(size));
+
+  const pick = (t: Tool) => {
+    setTool(t);
+    if (isDrawTool(t)) setDrawTool(t);
+  };
 
   useEffect(() => {
     if (!canDraw) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return;
+      if (typing(e.target)) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         onUndo();
-      } else if (e.key === 'b') setTool('brush');
-      else if (e.key === 'e') setTool('eraser');
-      else if (e.key === 'f') setTool('fill');
+        return;
+      }
+      // Shift is left alone: it shapes the shape being drawn.
+      if (e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+      if (e.key === '[' || e.key === ']') {
+        const d = e.key === '[' ? -1 : 1;
+        setSize((s) => SIZES[Math.min(SIZES.length - 1, Math.max(0, SIZES.indexOf(s) + d))]!);
+        return;
+      }
+      const t = KEYS.get(e.key.toLowerCase());
+      if (t) {
+        setTool(t);
+        if (isDrawTool(t)) setDrawTool(t);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [canDraw, onUndo]);
+
+  const sizeTitle = (i: number) => `Brush size ${i + 1} of ${SIZES.length} ([ smaller, ] bigger)`;
 
   return (
     <>
@@ -92,7 +144,7 @@ export const Board = memo(function Board({
                 style={{ background: c }}
                 onClick={() => {
                   setColor(c);
-                  if (tool === 'eraser') setTool('brush');
+                  if (tool === 'eraser') setTool(drawTool);
                   setPaletteOpen(false);
                 }}
                 aria-label={`Colour ${c}`}
@@ -103,9 +155,10 @@ export const Board = memo(function Board({
           <button
             className="sizer size-cycle"
             onClick={() => setSize(SIZES[(sizeIndex + 1) % SIZES.length]!)}
+            title={sizeTitle(sizeIndex)}
             aria-label={`Brush size ${sizeIndex + 1} of ${SIZES.length}; tap for the next`}
           >
-            <span style={{ width: 5 + sizeIndex * 7, height: 5 + sizeIndex * 7 }} />
+            <span style={dot(size)} />
           </button>
           <div className="group sizes">
             {SIZES.map((s, i) => (
@@ -113,14 +166,35 @@ export const Board = memo(function Board({
                 key={s}
                 className={`sizer ${s === size ? 'on' : ''}`}
                 onClick={() => setSize(s)}
+                title={sizeTitle(i)}
                 aria-label={`Brush size ${i + 1}`}
                 aria-pressed={s === size}
               >
-                <span style={{ width: 5 + i * 7, height: 5 + i * 7 }} />
+                <span style={dot(s)} />
               </button>
             ))}
           </div>
           <div className="group">
+            {/* Wide screens: every drawing tool in the row (see .draw-inline in CSS). */}
+            {DRAW_TOOLS.map((t) => (
+              <button
+                key={t.id}
+                className={`icon draw-inline ${tool === t.id ? 'on' : ''}`}
+                onClick={() => pick(t.id)}
+                title={toolTitle(t)}
+                aria-label={t.label}
+                aria-pressed={tool === t.id}
+              >
+                <ToolIcon tool={t.id} />
+              </button>
+            ))}
+            {/* Everywhere else: one button for them all. */}
+            <DrawToolMenu
+              current={drawTool}
+              active={isDrawTool(tool)}
+              onPick={pick}
+              onOpen={() => setPaletteOpen(false)}
+            />
             {TOOLS.map((t) => (
               <button
                 key={t.id}

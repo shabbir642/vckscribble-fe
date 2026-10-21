@@ -447,9 +447,44 @@ input[type='checkbox'] { width: 22px; height: 22px; accent-color: var(--green); 
 .current-color { width: 40px; height: 40px; border-radius: 50%; border: var(--outline); flex: none; }
 .sizer { width: 40px; height: 40px; padding: 0; display: grid; place-items: center; }
 .sizer span { display: block; background: var(--ink); border-radius: 50%; }
+/* Five sizes, a little tighter, so they share a row with the drawing tools
+   where the canvas column is narrow. */
+.tools .sizes { gap: 4px; }
+.tools .sizes .sizer { width: 36px; height: 36px; }
 button.current-color { padding: 0; box-shadow: none; cursor: default; }
 button.current-color:hover:not(:disabled) { transform: none; box-shadow: none; }
 .size-cycle { display: none; }
+
+/* Drawing tools (brush, line, rectangle, circle): one button showing the
+   current one, opening the others in a pop-up; on wide screens, all in the
+   row instead (below). Specific enough to beat the phone toolbar's
+   button.icon rule, which would show them. */
+.tools .group > button.icon.draw-inline { display: none; }
+.draw-menu { position: relative; display: flex; }
+.draw-toggle { position: relative; }
+/* The corner mark of a tool group in a paint app: more in here. */
+.draw-toggle::after {
+  content: ''; position: absolute; right: 3px; bottom: 3px;
+  border-style: solid; border-width: 0 0 5px 5px;
+  border-color: transparent transparent var(--ink) transparent;
+}
+.tool-pop {
+  display: none;
+  position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 25;
+  gap: 4px; padding: 6px;
+  background: var(--paper); border: var(--outline); border-radius: var(--radius); box-shadow: var(--shadow);
+  transform-origin: bottom left;
+}
+.tool-pop.open { display: flex; animation: pop 140ms ease-out both; }
+.tool-pop button { width: 40px; height: 40px; padding: 0; display: grid; place-items: center; }
+/* Full-size targets in the pop-up even where the phone toolbar shrinks its icons. */
+.play .tools .tool-pop button.icon { width: 40px; height: 40px; }
+/* Sized like the emoji beside it; the negative margin keeps the button as tall. */
+.tool-svg { display: block; width: 1.2em; height: 1.2em; margin: -0.1em 0; }
+@media (min-width: 1280px) and (min-height: 521px) {
+  .tools .group > button.icon.draw-inline { display: grid; place-items: center; }
+  .tools .draw-menu { display: none; }
+}
 
 /* Small screens: the toolbar is one row (colour, size, tools); the palette
    pops up over the canvas from the colour button. */
@@ -782,9 +817,10 @@ button.kick.compact { padding: 3px 6px; font-size: 0.8rem; }
   .play .canvas-box { grid-area: canvas; align-items: start; }
   .play .stage:has(.tools) .canvas-box { align-items: start; }
   .play .tools { grid-area: tools; }
-  /* The toolbar is at the top of the side column: the palette opens downward,
-     over the players and guesses. */
+  /* The toolbar is at the top of the side column: the palette and the
+     drawing tools open downward, over the players and guesses. */
   .play .swatches { top: calc(100% + 8px); bottom: auto; left: auto; right: 0; }
+  .play .tool-pop { top: calc(100% + 8px); bottom: auto; transform-origin: top left; }
   .play > .players-panel { grid-area: players; }
   .play > .chat { grid-area: chat; }
   .play .chat h3 { display: none; }

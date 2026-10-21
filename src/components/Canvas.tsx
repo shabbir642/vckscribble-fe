@@ -1,11 +1,15 @@
 import { memo, useEffect, useRef } from 'react';
-import { COORD_SCALE, MAX_POINTS_PER_STROKE, type Stroke } from '../generated/contract';
+import { COORD_SCALE, MAX_POINTS_PER_STROKE, type Stroke, type Tool } from '../generated/contract';
 import { drawStroke } from '../lib/render';
+import { isShape, shapePoints, type Shape } from '../lib/shapes';
 import { strokeStore } from '../lib/strokes';
+
+/** What a press on the canvas does: a stroke tool, or a shape to drag out. */
+export type CanvasTool = Tool | Shape;
 
 interface Props {
   canDraw: boolean;
-  tool: 'brush' | 'eraser' | 'fill';
+  tool: CanvasTool;
   color: string;
   size: number;
   /** A new stroke: sent whole, once. */
@@ -27,6 +31,33 @@ const FLUSH_MS = 40;
 const MIN_STEP = 20;
 
 const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+/** Where a pointer is, as fractions of the canvas, clamped to it. */
+const fractionAt = (e: { clientX: number; clientY: number }, rect: DOMRect): [number, number] => [
+  Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)),
+  Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height)),
+];
+
+const pointAt = (e: { clientX: number; clientY: number }, rect: DOMRect): [number, number] => {
+  const [fx, fy] = fractionAt(e, rect);
+  return [Math.round(fx * COORD_SCALE), Math.round(fy * COORD_SCALE)];
+};
+
+/**
+ * A shape being dragged out. Nothing is sent until it is let go: until then it
+ * is a preview on this screen alone. The ends are fractions of the canvas, so
+ * a resize mid-drag (a phone turning, a toolbar sliding away) keeps them.
+ */
+interface ShapeDrag {
+  pointerId: number;
+  shape: Shape;
+  color: string;
+  size: number;
+  from: [number, number];
+  to: [number, number];
+  /** Shift: squares, circles, lines at 45° steps. */
+  constrain: boolean;
+}
 
 /**
  * Paints the shared stroke log imperatively. It never re-renders for drawing
@@ -58,7 +89,12 @@ export const Canvas = memo(function Canvas({
   const frame = useRef(0);
 
   // Live drag state, in refs so pointer handlers never wait on React.
-  const live = useRef<{ stroke: Stroke; pending: number[]; lastFlush: number } | null>(null);
+  const live = useRef<{ pointerId: number; stroke: Stroke; pending: number[]; lastFlush: number } | null>(null);
+  const shaping = useRef<ShapeDrag | null>(null);
+  /** The shape as it would land if let go now; null while too small to draw. */
+  const preview = useRef<Stroke | null>(null);
+  /** Schedules a paint; set up with the canvas. */
+  const repaint = useRef(() => {});
   const props = useRef({ canDraw, tool, color, size, onStart, onAppend });
   props.current = { canDraw, tool, color, size, onStart, onAppend };
 
@@ -129,11 +165,14 @@ export const Canvas = memo(function Canvas({
       for (let j = cachedCount.current; j < strokes.length; j++) {
         drawStroke(ctx, strokes[j]!, w, h);
       }
+      // A shape being dragged out goes on top, where it will land when let go.
+      if (preview.current) drawStroke(ctx, preview.current, w, h);
     };
 
     const schedule = () => {
       if (!frame.current) frame.current = requestAnimationFrame(paint);
     };
+    repaint.current = schedule;
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
@@ -182,22 +221,42 @@ export const Canvas = memo(function Canvas({
       ro.disconnect();
       if (frame.current) cancelAnimationFrame(frame.current);
       frame.current = 0;
+      repaint.current = () => {};
     };
   }, []);
 
   // Losing the pen mid-drag (the turn ended, or the connection dropped) ends
-  // the drag: points drawn after it could never reach the server.
+  // the drag: points drawn after it could never reach the server, and a shape
+  // not yet let go is dropped.
   useEffect(() => {
     if (canDraw) return;
     const l = live.current;
     if (l?.pending.length) props.current.onAppend(l.stroke.id, l.pending);
     live.current = null;
+    cancelShape();
   }, [canDraw]);
 
-  const pointAt = (e: { clientX: number; clientY: number }, rect: DOMRect): [number, number] => [
-    Math.round(Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)) * COORD_SCALE),
-    Math.round(Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height)) * COORD_SCALE),
-  ];
+  // Escape drops a shape mid-drag. Shift squares it up (or snaps a line) the
+  // moment it is pressed or let go, without waiting for the pointer to move.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const d = shaping.current;
+      if (!d) return;
+      if (e.key === 'Escape' && e.type === 'keydown') {
+        e.preventDefault();
+        cancelShape();
+      } else if (e.key === 'Shift' && d.constrain !== e.shiftKey) {
+        d.constrain = e.shiftKey;
+        reshape();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKey);
+    };
+  }, []);
 
   const flush = () => {
     const l = live.current;
@@ -207,34 +266,103 @@ export const Canvas = memo(function Canvas({
     l.lastFlush = performance.now();
   };
 
-  const begin = (first: [number, number]) => {
-    const { tool: t, color: c, size: sz, onStart: start } = props.current;
+  const begin = (first: [number, number], style: Pick<Stroke, 'tool' | 'color' | 'size'>) => {
     const stroke: Stroke = {
       id: newId(),
       drawerId: 'me', // server overwrites with the authenticated seat
-      tool: t,
-      color: c,
-      size: sz,
+      tool: style.tool,
+      color: style.color,
+      size: style.size,
       points: [first[0], first[1]],
     };
     strokeStore.put(stroke);
     // A copy: the local stroke keeps growing, the message must not.
-    start({ ...stroke, points: stroke.points.slice() });
+    props.current.onStart({ ...stroke, points: stroke.points.slice() });
     return stroke;
   };
 
+  /** Works the preview out again from the drag, at the canvas's size now. */
+  const reshape = () => {
+    const d = shaping.current;
+    const canvas = canvasRef.current;
+    if (!d || !canvas) return;
+    const { width: w, height: h } = canvas.getBoundingClientRect();
+    const points = shapePoints(
+      d.shape,
+      { x: d.from[0] * w, y: d.from[1] * h },
+      { x: d.to[0] * w, y: d.to[1] * h },
+      w,
+      h,
+      d.constrain,
+    );
+    // An ordinary brush stroke, so it travels and replays like any other.
+    preview.current = points
+      ? { id: 'preview', drawerId: 'me', tool: 'brush', color: d.color, size: d.size, points }
+      : null;
+    repaint.current();
+  };
+
+  const cancelShape = () => {
+    if (!shaping.current) return;
+    shaping.current = null;
+    preview.current = null;
+    repaint.current();
+  };
+
+  /** Let go: what the preview showed becomes one stroke, sent whole, once. */
+  const finishShape = () => {
+    const shape = preview.current;
+    shaping.current = null;
+    preview.current = null;
+    if (!shape) return; // a tap, or dragged back to where it started
+    const stroke: Stroke = { ...shape, id: newId() };
+    strokeStore.put(stroke);
+    props.current.onStart({ ...stroke, points: stroke.points.slice() });
+  };
+
   const onDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!props.current.canDraw) return;
+    // One pen at a time: a second finger (or a resting palm) neither starts a
+    // stroke of its own nor tugs at the one being drawn.
+    if (!props.current.canDraw || !e.isPrimary) return;
+    // isPrimary is per kind of pointer: a palm landing during a pen or mouse
+    // drag is the primary touch. Leave a drag alone while it still holds its
+    // pointer; one whose release was lost has let go of it.
+    const busy = live.current?.pointerId ?? shaping.current?.pointerId;
+    if (busy !== undefined && busy !== e.pointerId && e.currentTarget.hasPointerCapture?.(busy)) return;
+    // A drag whose end never arrived is over now.
+    flush();
+    live.current = null;
+    cancelShape();
+
     e.currentTarget.setPointerCapture(e.pointerId);
-    const stroke = begin(pointAt(e, e.currentTarget.getBoundingClientRect()));
+    const rect = e.currentTarget.getBoundingClientRect();
+    const { tool, color: c, size: sz } = props.current;
+    if (isShape(tool)) {
+      const at = fractionAt(e, rect);
+      shaping.current = {
+        pointerId: e.pointerId, shape: tool, color: c, size: sz, from: at, to: at, constrain: e.shiftKey,
+      };
+      return;
+    }
+    const stroke = begin(pointAt(e, rect), { tool, color: c, size: sz });
     live.current = stroke.tool === 'fill'
       ? null
-      : { stroke, pending: [], lastFlush: performance.now() };
+      : { pointerId: e.pointerId, stroke, pending: [], lastFlush: performance.now() };
   };
 
   const onMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!props.current.canDraw) return;
+    const d = shaping.current;
+    if (d) {
+      if (e.pointerId !== d.pointerId) return;
+      // Only where the pointer is now matters: no need for coalesced samples.
+      d.to = fractionAt(e, e.currentTarget.getBoundingClientRect());
+      d.constrain = e.shiftKey;
+      reshape();
+      return;
+    }
     const l = live.current;
-    if (!l || !props.current.canDraw) return;
+    if (!l || e.pointerId !== l.pointerId) return;
     const rect = e.currentTarget.getBoundingClientRect();
     // Coalesced events recover the samples the browser merged into one frame,
     // so fast curves stay smooth without raising the send rate.
@@ -248,10 +376,10 @@ export const Canvas = memo(function Canvas({
 
       if (pts.length / 2 >= MAX_POINTS_PER_STROKE) {
         // The server caps a stroke's length; continue seamlessly in a new one
-        // that starts where this one ended.
+        // that starts where this one ended, in the same tool, colour and size.
         flush();
-        const next = begin([px, py]);
-        live.current = { stroke: next, pending: [], lastFlush: performance.now() };
+        const next = begin([px, py], cur.stroke);
+        live.current = { pointerId: cur.pointerId, stroke: next, pending: [], lastFlush: performance.now() };
       }
       const target = live.current!;
       strokeStore.append(target.stroke.id, [x, y]);
@@ -260,9 +388,26 @@ export const Canvas = memo(function Canvas({
     if (performance.now() - live.current!.lastFlush >= FLUSH_MS) flush();
   };
 
-  const onUp = () => {
+  const onUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const d = shaping.current;
+    if (d) {
+      if (e.pointerId === d.pointerId) finishShape();
+      return;
+    }
+    if (live.current?.pointerId !== e.pointerId) return;
     flush();
     live.current = null;
+  };
+
+  // The system took the pointer (a gesture, a call coming in): a stroke keeps
+  // what was drawn, a shape not yet let go is dropped.
+  const onCancel = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const d = shaping.current;
+    if (d) {
+      if (e.pointerId === d.pointerId) cancelShape();
+      return;
+    }
+    onUp(e);
   };
 
   return (
@@ -272,7 +417,7 @@ export const Canvas = memo(function Canvas({
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={onUp}
-      onPointerCancel={onUp}
+      onPointerCancel={onCancel}
     />
   );
 });
