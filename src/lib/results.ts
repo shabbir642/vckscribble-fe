@@ -1,4 +1,5 @@
 import type { Award, AwardId, GameSummary, Player, SummaryPlayer } from '../generated/contract';
+import { GREETINGS, type Festive } from './season';
 
 /**
  * The words of a finished game: award names, the headline, what a share says
@@ -224,14 +225,25 @@ function clip(s: string, max: number): string {
  * The message that travels with the picture: one line each for the headline,
  * the drawing of the game and the link, at most SHARE_MAX characters. `join`
  * invites to this room (private chats); otherwise it points at the site
- * (public posts, where a live room code has no business being).
+ * (public posts, where a live room code has no business being). A festive
+ * game's message opens with the festival's greeting when there is room for it.
  */
 export function shareText(
   summary: GameSummary,
   youId: string | null,
   url: string,
   join: boolean,
+  festive: Festive = null,
 ): string {
+  const text = message(summary, youId, url, join);
+  if (!festive) return text;
+  // Only into room to spare: the greeting never costs the message a word.
+  const greeted = `${GREETINGS[festive]} ${text}`;
+  return greeted.length <= SHARE_MAX ? greeted : text;
+}
+
+/** The message, greeting aside. */
+function message(summary: GameSummary, youId: string | null, url: string, join: boolean): string {
   const cta = `${join ? 'Join our next game:' : 'Play free with friends:'} ${url}`;
   const head = sentence(headline(summary, youId));
   const best = summary.best;
@@ -275,9 +287,11 @@ export function cardAwards(summary: GameSummary): Award[] {
 }
 
 /** The share picture in words, for its alt text: what it shows, in reading order. */
-export function cardAlt(summary: GameSummary, youId: string | null): string {
+export function cardAlt(summary: GameSummary, youId: string | null, festive: Festive = null): string {
   const name = (id: string) => oneLine(summary.players.find((p) => p.id === id)?.name ?? 'Someone');
   const parts = [`Drawdle results picture: ${sentence(headline(summary, youId))}`];
+  // The sticker by the headline.
+  if (festive) parts.push(GREETINGS[festive]);
   const best = summary.best;
   if (best) {
     const by = `“${oneLine(best.word)}” drawn by ${oneLine(best.drawerName)}`;

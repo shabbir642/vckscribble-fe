@@ -187,7 +187,7 @@ export function shuffle<T>(items: readonly T[], random: () => number = Math.rand
 
 /* ------------------------------------------------- word tools and lists */
 
-export const LIST_KEYS: readonly ListKey[] = ['all', 'easy', 'hard', 'kids', 'office', 'desi'];
+export const LIST_KEYS: readonly ListKey[] = ['all', 'easy', 'hard', 'kids', 'office', 'desi', 'diwali'];
 export const isListKey = (v: unknown): v is ListKey => LIST_KEYS.some((k) => k === v);
 
 const ALL_PACKS: readonly WordPackId[] = WORD_PACKS.map((p) => p.id);
@@ -200,6 +200,7 @@ export const LIST_PACKS: Record<ListKey, readonly WordPackId[]> = {
   kids: KIDS_PACKS,
   office: ['office', 'slang'],
   desi: ['desi'],
+  diwali: ['diwali'],
 };
 
 /** A list's words, or one age band of the kids list. */

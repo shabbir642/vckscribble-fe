@@ -68,7 +68,11 @@ export const TIER_LABELS: Record<Word['tier'], string> = { 1: 'Easy', 2: 'Medium
 
 /* ---------------------------------------------------------------- kids */
 
-/** Everything but the office and its slang. */
+/**
+ * Everything but the office and its slang, and Diwali: the kids lists are for
+ * any day of the year, and the Diwali words children know best (diya,
+ * rangoli, ladoo, sparkler) are on them already, from Desi.
+ */
 export const KIDS_PACKS: readonly WordPackId[] = [
   'everyday', 'animals', 'food', 'actions', 'places', 'nature', 'sports', 'tech', 'jobs', 'fantasy', 'desi',
 ];
@@ -128,7 +132,7 @@ export const SLANG_GROUPS: readonly { category: string; label: string }[] = [
 /* -------------------------------------------------------------- lists */
 
 /** The lists the guide pages print and hand to a room. */
-export type ListKey = 'all' | 'easy' | 'hard' | 'kids' | 'office' | 'desi';
+export type ListKey = 'all' | 'easy' | 'hard' | 'kids' | 'office' | 'desi' | 'diwali';
 
 const LISTS: Record<ListKey, (w: Word) => boolean> = {
   all: () => true,
@@ -139,6 +143,7 @@ const LISTS: Record<ListKey, (w: Word) => boolean> = {
   kids: (w) => w.tier <= 2 && inAny(w, KIDS_PACKS) && !KID_UNSUITABLE.has(normalizeWord(w.text)),
   office: (w) => inPack(w, 'office') || inPack(w, 'slang'),
   desi: (w) => inPack(w, 'desi'),
+  diwali: (w) => inPack(w, 'diwali'),
 };
 
 /** A fresh array each call, in seed order: callers sort and shuffle it freely. */

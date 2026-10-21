@@ -2,6 +2,7 @@ import type { BestDrawing, GameSummary, SummaryPlayer } from '../generated/contr
 import { AVATARS, BACKDROPS, avatarSlot } from '../components/Avatar';
 import { renderDrawing } from './render';
 import { AWARDS, cardAwards, graphemes, headline, podium } from './results';
+import { GREETINGS, type Festive } from './season';
 
 export * from './results';
 
@@ -17,6 +18,10 @@ export * from './results';
  *
  * Everything on it is drawn here or comes from this origin, so the canvas is
  * never tainted and always exports.
+ *
+ * A festive game (lib/season.ts) gets the festival's dressing, drawn with
+ * paths like the rest: for Diwali, fairy lights across the top, a row of
+ * lit diyas above the footer and a greeting stuck on by the headline.
  */
 const CARD_W = 1080;
 const CARD_H = 1350;
@@ -33,6 +38,12 @@ const PAPER = '#ffffff';
 const YELLOW = '#ffd23f';
 /** Muted text on indigo, as under the podium in the game. */
 const LAVENDER = '#d5d2ff';
+/** Diwali's warm accents: the house tangerine and yellows, with marigold and clay between. */
+const TANGERINE = '#ff8a3d';
+const MARIGOLD = '#ffb12e';
+const WARM_WHITE = '#fff4c7';
+const CLAY = '#e0703f';
+const CLAY_DARK = '#a8441d';
 
 /** The wordmark as components/Logo.tsx draws it: a marker colour and a tilt per letter. */
 const LOGO_COLORS = ['#ffd23f', '#2bd46e', '#ff5fa2', '#8fe3ff', '#ff8a3d', '#ffffff'];
@@ -70,6 +81,9 @@ const ASSET_WAIT_MS = 1200;
 const FOOTER_H = 44;
 /** How far the caption sticker hangs below the drawing, shadow included. */
 const CAPTION_DROP = 18;
+/** Diwali: how far the lights push the wordmark down, and the band the diyas stand in. */
+const LIGHTS_ROOM = 10;
+const DIYAS_ROOM = 24;
 
 /** The podium: small under a drawing, roomy in its place, big when it is all there is. */
 interface PodiumSize {
@@ -108,6 +122,7 @@ interface Parts {
   top: SummaryPlayer[];
   chips: Chip[];
   mascot: HTMLImageElement | null;
+  festive: Festive;
 }
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
@@ -119,13 +134,16 @@ const wait = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
  * passes it in), or null for a picture without it; left out, it is replayed
  * here from `summary.best`. Without a drawing (none, or one too slow to
  * replay), the picture is laid out as for a game where nothing was drawn.
+ * `festive` dresses it for a festival.
  */
 export async function renderShareCard(input: {
   summary: GameSummary;
   youId: string | null;
   drawing?: HTMLCanvasElement | null;
+  festive?: Festive;
 }): Promise<Blob> {
   const { summary, youId } = input;
+  const festive = input.festive ?? null;
   const title = headline(summary, youId);
   const top = podium(summary);
   const names = new Map(summary.players.map((p) => [p.id, p.name]));
@@ -142,6 +160,7 @@ export async function renderShareCard(input: {
   const sample = [
     'Drawdle Play free at drawdle.in Draw badly. Guess wildly. Laugh loudly.',
     '0123456789 points “”…',
+    festive ? GREETINGS[festive] : '',
     title,
     summary.best ? `${summary.best.word} drawn by ${summary.best.drawerName}` : '',
     ...top.map((p) => p.name),
@@ -168,7 +187,7 @@ export async function renderShareCard(input: {
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('No canvas to draw the share card on');
       ctx.scale(S, S);
-      paint(ctx, { title, best, art, top, chips, mascot });
+      paint(ctx, { title, best, art, top, chips, mascot, festive });
       return await toPng(canvas);
     } finally {
       // iOS keeps a canvas's memory until it is shrunk, and caps the total.
@@ -239,21 +258,35 @@ function loadMascot(): Promise<HTMLImageElement | null> {
 function paint(ctx: CanvasRenderingContext2D, p: Parts): void {
   background(ctx);
   const inner = W - 2 * PAD;
+  const diwali = p.festive === 'diwali';
+  const greeting = p.festive ? GREETINGS[p.festive] : null;
 
-  logo(ctx, p.mascot, 14);
-  let y = 14 + 42 + 6;
+  // Diwali's lights hang across the top, with the wordmark moved down clear of them.
+  if (diwali) fairyLights(ctx);
+  const logoTop = 14 + (diwali ? LIGHTS_ROOM : 0);
+  logo(ctx, p.mascot, logoTop);
+  let y = logoTop + 42 + 6;
   const head = fitHeadline(ctx, p.title, inner);
   drawHeadline(ctx, head, y);
   y += head.lines.length * head.px * 1.12;
 
   const footTop = H - 10 - FOOTER_H;
   footer(ctx, footTop);
+  // Diwali's diyas stand in a row of their own on top of the footer.
+  const floor = diwali ? footTop - DIYAS_ROOM : footTop;
+  if (diwali) diyas(ctx, footTop - 2);
 
   if (p.best) {
     // The drawing is the hero: it takes whatever height the rest leaves.
     const chipsH = p.chips.length ? 8 + CHIP_SMALL.h + 3 : 0;
     const below = CAPTION_DROP + 10 + podiumHeight(PODIUM_SMALL) + chipsH + 10;
-    const room = footTop - y - 12 - below;
+    // The greeting gets a band of its own above the drawing: stuck on the
+    // panel's corner it would hide whatever was drawn there.
+    const gw = greeting ? greetingWidth(ctx, greeting) : 0;
+    const rise = greeting ? greetingRise(gw) : 0;
+    const headEnd = y;
+    if (greeting) y += 2 * rise - 14;
+    const room = floor - y - 12 - below;
     const tallest = ((inner - 6) * 3) / 4 + 6;
     const ph = Math.max(120, Math.min(room, tallest));
     // Height the drawing cannot use (it is as wide as it goes) spreads into the gaps.
@@ -261,7 +294,13 @@ function paint(ctx: CanvasRenderingContext2D, p: Parts): void {
 
     y += 12 + extra;
     const pw = ((ph - 6) * 4) / 3 + 6;
-    drawingPanel(ctx, p.art, (W - pw) / 2, y, pw, ph);
+    const px = (W - pw) / 2;
+    drawingPanel(ctx, p.art, px, y, pw, ph);
+    if (greeting) {
+      // Over the drawing's top corner, in its band: it overlaps the panel's
+      // outline at most, never the drawing.
+      greetingSticker(ctx, greeting, Math.min(px + pw, W - 8 - gw / 2), headEnd + 4 + rise, gw);
+    }
     // The caption may stick out past the drawing: the word is the joke.
     caption(ctx, p.best, W / 2, y + ph, inner);
     y += ph + CAPTION_DROP + 10 + extra;
@@ -272,10 +311,17 @@ function paint(ctx: CanvasRenderingContext2D, p: Parts): void {
   }
 
   // Nothing was drawn: the podium takes the space, and the awards get room.
+  if (greeting) {
+    // Under the headline, in a row of its own as tall as the tilted sticker and its shadow.
+    const gw = greetingWidth(ctx, greeting);
+    const rise = greetingRise(gw);
+    greetingSticker(ctx, greeting, W / 2, y + 6 + rise, gw);
+    y += 6 + 2 * rise + 3;
+  }
   const z = p.chips.length ? PODIUM_ROOMY : PODIUM_BIG;
   const n = p.chips.length;
   const chipsH = n ? n * CHIP_ROOMY.h + (n - 1) * 12 + 3 : 0;
-  const gap = Math.max(12, (footTop - y - podiumHeight(z) - chipsH) / (n ? 3 : 2));
+  const gap = Math.max(12, (floor - y - podiumHeight(z) - chipsH) / (n ? 3 : 2));
   y += gap;
   drawPodium(ctx, p.top, y, z);
   y += podiumHeight(z) + gap;
@@ -631,6 +677,196 @@ function footer(ctx: CanvasRenderingContext2D, top: number): void {
   ctx.font = body(800, 12.5);
   ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
   ctx.fillText('Draw badly. Guess wildly. Laugh loudly.', W / 2, top + 39);
+}
+
+/* ---------------------------------------------------------------- Diwali */
+
+const GREETING_PX = 15.5;
+const GREETING_H = 29;
+const GREETING_TILT = rad(5);
+/** The fairy lights' bulbs, in turn: warm colours only, as a real string's are. */
+const BULBS = [YELLOW, TANGERINE, WARM_WHITE, MARIGOLD];
+
+/**
+ * A warm light around (x, y), fading out by `r`. Strong at the heart: a thin
+ * warm wash over indigo only greys it.
+ */
+function glow(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, alpha: number): void {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, `rgba(255, 214, 120, ${alpha})`);
+  g.addColorStop(0.4, `rgba(255, 184, 77, ${alpha * 0.45})`);
+  g.addColorStop(1, 'rgba(255, 184, 77, 0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x - r, y - r, 2 * r, 2 * r);
+}
+
+/**
+ * A string of fairy lights across the top in three loops, pinned just above
+ * the card's edge. The bulbs hang at the wire's slope, as a real string's
+ * do, and glow on the indigo. They stay in the band LIGHTS_ROOM makes.
+ */
+function fairyLights(ctx: CanvasRenderingContext2D): void {
+  const loops = 3;
+  const from = -8;
+  const span = (W - 2 * from) / loops;
+  const pin = -1;
+  const sag = 10;
+  const perLoop = 6;
+  const bulbs: { x: number; y: number; tilt: number }[] = [];
+  for (let i = 0; i < loops; i++) {
+    for (let j = 0; j < perLoop; j++) {
+      // Each loop is a parabola from pin to pin.
+      const t = (j + 0.5) / perLoop;
+      const slope = (4 * sag * (1 - 2 * t)) / span;
+      bulbs.push({ x: from + (i + t) * span, y: pin + 4 * sag * t * (1 - t), tilt: Math.atan(slope) });
+    }
+  }
+  ctx.save();
+  // The light first, so no bulb's glow washes over its neighbour.
+  for (const b of bulbs) glow(ctx, b.x - 7 * Math.sin(b.tilt), b.y + 7 * Math.cos(b.tilt), 12, 0.85);
+  ctx.beginPath();
+  ctx.moveTo(from, pin);
+  for (let i = 0; i < loops; i++) {
+    const x0 = from + i * span;
+    ctx.quadraticCurveTo(x0 + span / 2, pin + 2 * sag, x0 + span, pin);
+  }
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  bulbs.forEach((b, i) => bulb(ctx, b.x, b.y, b.tilt, BULBS[i % BULBS.length] ?? YELLOW));
+  ctx.restore();
+}
+
+/** One bulb on the wire at (x, y): an ink cap, then the glass, catching the light. */
+function bulb(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  tilt: number,
+  colour: string,
+): void {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(tilt);
+  ctx.fillStyle = INK;
+  roundRect(ctx, -1.9, -0.6, 3.8, 3.9, 0.9);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(0, 7, 3.1, 4.3, 0, 0, Math.PI * 2);
+  ctx.fillStyle = colour;
+  ctx.fill();
+  ctx.lineWidth = 1.1;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(-1.1, 5.7, 0.8, 1.4, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+  ctx.fill();
+  ctx.restore();
+}
+
+/** Lit diyas in a row across the card, standing on `base`. */
+function diyas(ctx: CanvasRenderingContext2D, base: number): void {
+  const n = 7;
+  const w = 20;
+  const step = (W - 2 * PAD - w) / (n - 1);
+  const xs = Array.from({ length: n }, (_, i) => PAD + w / 2 + i * step);
+  ctx.save();
+  for (const x of xs) glow(ctx, x, base - w * 0.7, w * 0.9, 0.85);
+  for (const x of xs) diya(ctx, x, base, w);
+  ctx.restore();
+}
+
+/**
+ * A clay lamp, `w` wide, seen from the front: a bowl painted with dots, the
+ * oil at its rim and the flame on its wick.
+ */
+function diya(ctx: CanvasRenderingContext2D, cx: number, base: number, w: number): void {
+  const depth = w * 0.44;
+  const rim = w * 0.12;
+  ctx.save();
+  ctx.translate(cx, base - depth);
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 1.3;
+  ctx.strokeStyle = INK;
+
+  ctx.beginPath();
+  ctx.moveTo(-w / 2, 0);
+  ctx.bezierCurveTo(-w / 2, depth * 0.8, -w * 0.3, depth, 0, depth);
+  ctx.bezierCurveTo(w * 0.3, depth, w / 2, depth * 0.8, w / 2, 0);
+  ctx.closePath();
+  ctx.fillStyle = CLAY;
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = YELLOW;
+  for (const k of [-1, 0, 1]) {
+    ctx.beginPath();
+    ctx.arc(k * w * 0.22, depth * (k ? 0.48 : 0.6), w * 0.045, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.beginPath();
+  ctx.ellipse(0, 0, w / 2, rim, 0, 0, Math.PI * 2);
+  ctx.fillStyle = CLAY_DARK;
+  ctx.fill();
+  ctx.stroke();
+
+  flame(ctx, 0, rim * 0.2, w * 0.62);
+  ctx.restore();
+}
+
+/** A flame `h` tall rising from (x, y): marigold, white-hot at its heart, inked. */
+function flame(ctx: CanvasRenderingContext2D, x: number, y: number, h: number): void {
+  const drop = (k: number) => {
+    const fh = h * k;
+    const fw = h * 0.42 * k;
+    ctx.beginPath();
+    ctx.moveTo(x, y - fh);
+    ctx.bezierCurveTo(x + fw * 0.2, y - fh * 0.66, x + fw * 0.56, y - fh * 0.45, x + fw * 0.5, y - fh * 0.2);
+    ctx.bezierCurveTo(x + fw * 0.45, y + fh * 0.02, x - fw * 0.45, y + fh * 0.02, x - fw * 0.5, y - fh * 0.2);
+    ctx.bezierCurveTo(x - fw * 0.56, y - fh * 0.45, x - fw * 0.2, y - fh * 0.66, x, y - fh);
+    ctx.closePath();
+  };
+  drop(1);
+  ctx.fillStyle = MARIGOLD;
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  drop(0.55);
+  ctx.fillStyle = WARM_WHITE;
+  ctx.fill();
+}
+
+/** How wide the greeting's sticker is. */
+function greetingWidth(ctx: CanvasRenderingContext2D, text: string): number {
+  ctx.font = display(700, GREETING_PX);
+  return ctx.measureText(text).width + 26;
+}
+
+/** How far the greeting's sticker, `w` wide and askew, reaches above its centre. */
+function greetingRise(w: number): number {
+  return (w / 2) * Math.sin(GREETING_TILT) + (GREETING_H / 2) * Math.cos(GREETING_TILT);
+}
+
+/** The festival's greeting on a tangerine sticker, slapped on askew, centred on (cx, cy). */
+function greetingSticker(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  cx: number,
+  cy: number,
+  w: number,
+): void {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(GREETING_TILT);
+  sticker(ctx, -w / 2, -GREETING_H / 2, w, GREETING_H, 14, TANGERINE, 2.5, 3);
+  ctx.font = display(700, GREETING_PX);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = INK;
+  ctx.fillText(text, 0, GREETING_PX * 0.36);
+  ctx.restore();
 }
 
 /* --------------------------------------------------------------- drawing */

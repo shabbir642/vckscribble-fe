@@ -45,7 +45,12 @@ export function App() {
   const r = useRoom();
   // Kept here, not in the game screen: "Back to lobby" leaves the game screen,
   // and the next game must still be able to share the last one.
-  const results = useResults(r.summary, r.room?.youId ?? '', r.room?.roomCode ?? null);
+  const results = useResults(
+    r.summary,
+    r.room?.youId ?? '',
+    r.room?.roomCode ?? null,
+    r.room?.settings ?? null,
+  );
   // Screen stays on for as long as the player is in a room.
   useWakeLock(r.room !== null);
   const [sound, setSound] = useState(soundEnabled);

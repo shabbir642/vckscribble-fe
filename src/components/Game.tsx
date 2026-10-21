@@ -503,6 +503,7 @@ export function Game(p: Props) {
         <ShareSheet
           key={results.summary.id}
           summary={results.summary}
+          festive={results.festive}
           youId={room.youId}
           roomCode={room.roomCode}
           file={results.file}

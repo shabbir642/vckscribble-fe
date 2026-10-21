@@ -9,11 +9,12 @@ import {
   type CSSProperties,
 } from 'react';
 import { createPortal } from 'react-dom';
-import type { BestDrawing, GameSummary, Player, SummaryPlayer } from '../generated/contract';
+import type { BestDrawing, GameSummary, Player, RoomSettings, SummaryPlayer } from '../generated/contract';
 import type { RoomSnapshot } from '../hooks/useRoom';
 import { recordGame, recordLine } from '../lib/records';
 import { renderDrawing } from '../lib/render';
 import { AWARDS, formatSeconds, ordinal, shareText, summaryFromPlayers } from '../lib/results';
+import { GREETINGS, festiveFor, type Festive } from '../lib/season';
 import { roomInviteUrl } from '../lib/session';
 import { canShareFiles, isPhone, shareFile } from '../lib/share';
 import { sfx } from '../lib/sound';
@@ -46,6 +47,11 @@ export interface GameResults {
    */
   summary: GameSummary;
   /**
+   * The festival the game is dressed for, settled as it ended: the host may
+   * change the packs before the last game is shared.
+   */
+  festive: Festive;
+  /**
    * The drawing of the game at 1200×900 (the share card's size): undefined
    * until it has been replayed, null without one.
    */
@@ -73,6 +79,14 @@ async function replay(summary: GameSummary): Promise<HTMLCanvasElement | null> {
   } catch {
     return null; // the results open anyway, without the picture
   }
+}
+
+/**
+ * The festival a game with these settings is dressed for. A room playing
+ * only its host's words never drew from its packs.
+ */
+function festiveOf(settings: RoomSettings | null): Festive {
+  return festiveFor({ wordPacks: settings && !settings.customWordsOnly ? settings.wordPacks : [] });
 }
 
 /** iOS keeps a canvas's memory until it is shrunk, and caps the total. */
@@ -105,11 +119,14 @@ function afterOpening(run: () => void): () => void {
  * picture is made in idle time after that, ready for the Share tap.
  *
  * Kept per room (`roomCode`): the results of a room you have left go.
+ * `settings` are the room's: a summary only ever arrives while they are still
+ * the game's own (they are locked until the lobby).
  */
 export function useResults(
   summary: GameSummary | null,
   youId: string,
   roomCode: string | null,
+  settings: RoomSettings | null,
 ): GameResults | null {
   const [kept, setKept] = useState<Kept | null>(null);
   // A new game's results are kept from the render its summary arrives in, so
@@ -117,7 +134,13 @@ export function useResults(
   // changes nothing; leaving the room drops them.
   let next = kept && kept.roomCode === roomCode ? kept : null;
   if (summary && roomCode && summary.id !== next?.summary.id) {
-    next = { roomCode, summary, drawing: summary.best ? undefined : null, file: null };
+    next = {
+      roomCode,
+      summary,
+      festive: festiveOf(settings),
+      drawing: summary.best ? undefined : null,
+      file: null,
+    };
   }
   if (next !== kept) setKept(next);
 
@@ -198,7 +221,8 @@ export function useResults(
     // picture is laid out without one (never replayed a second time for it).
     const promise = drawing().then((art) => {
       const now = latest.current;
-      return makeCardFile(now?.summary.id === id ? now.summary : cur.summary, youId, art);
+      const game = now?.summary.id === id ? now : cur;
+      return makeCardFile(game.summary, youId, art, game.festive);
     });
     job.current = { id, promise };
     promise.then(
@@ -233,7 +257,10 @@ export function useResults(
   }, [id, played, card]);
 
   return useMemo(
-    () => (kept ? { summary: kept.summary, drawing: kept.drawing, file: kept.file, card } : null),
+    () =>
+      kept
+        ? { summary: kept.summary, festive: kept.festive, drawing: kept.drawing, file: kept.file, card }
+        : null,
     [kept, card],
   );
 }
@@ -284,6 +311,9 @@ function placeLine(me: SummaryPlayer, summary: GameSummary): string {
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** What stands by each festival's greeting under the winner. */
+const FESTIVE_EMOJI: Record<NonNullable<Festive>, string> = { diwali: '🪔' };
 
 /** Your numbers as chips: only what you did, with the words a screen reader needs. */
 function statChips(me: SummaryPlayer): { emoji: string; text: string; more?: string }[] {
@@ -353,6 +383,9 @@ export function Finale(p: Props) {
   /** What the details show: the server's summary or, after the wait, the scores alone. */
   const shown = summary ?? (waited ? base : null);
   const abandoned = summary?.abandoned ?? false;
+  // As the results settled it when the game ended; until they have, the
+  // room's settings are still the game's.
+  const festive = own ? own.festive : festiveOf(room.settings);
 
   // "left" by who is here now rather than at the end: someone refreshing just
   // then is back, and someone who has since gone is gone.
@@ -454,7 +487,7 @@ export function Finale(p: Props) {
     const file = shown === summary ? (own?.file ?? null) : null;
     if (file && isPhone() && canShareFiles(file)) {
       // Straight from the tap with nothing awaited: the OS sheet needs the tap.
-      void shareFile(file, shareText(shown, youId, invite, true)).then((r) => {
+      void shareFile(file, shareText(shown, youId, invite, true, festive)).then((r) => {
         if (r === 'failed') setSheetOpen(true);
       });
       return;
@@ -511,6 +544,11 @@ export function Finale(p: Props) {
               )}
               <div className="finale-hero">
                 <p className="winner-banner">{bannerText(standings, abandoned)}</p>
+                {festive && (
+                  <p className="finale-festive">
+                    <span aria-hidden="true">{FESTIVE_EMOJI[festive]}</span> {GREETINGS[festive]}
+                  </p>
+                )}
                 <Podium standings={standings} youId={youId} />
               </div>
               {/* Keyed: the details appear (and animate) afresh when the real summary replaces the stand-in. */}
@@ -584,11 +622,12 @@ export function Finale(p: Props) {
         <ShareSheet
           key={shown.id}
           summary={shown}
+          festive={festive}
           youId={youId}
           roomCode={room.roomCode}
           file={shown === summary ? (own?.file ?? null) : null}
           // The stand-in has no drawing to replay.
-          card={shown === summary && own ? own.card : () => makeCardFile(shown, youId, null)}
+          card={shown === summary && own ? own.card : () => makeCardFile(shown, youId, null, festive)}
           title="Share the results"
           onClose={() => setSheetOpen(false)}
         />

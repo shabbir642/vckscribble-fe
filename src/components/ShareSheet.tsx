@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import type { GameSummary } from '../generated/contract';
+import type { Festive } from '../lib/season';
 import { roomInviteUrl } from '../lib/session';
 import {
   SITE_URL,
@@ -29,14 +30,16 @@ export const CARD_FILE = 'drawdle-results.png';
 /**
  * The results picture as a file, ready to share, copy or save. `drawing` is
  * the drawing of the game already replayed, or null for a picture without
- * one; left out, the picture replays it itself.
+ * one; left out, the picture replays it itself. `festive` dresses it for a
+ * festival.
  */
 export async function makeCardFile(
   summary: GameSummary,
   youId: string | null,
   drawing?: HTMLCanvasElement | null,
+  festive: Festive = null,
 ): Promise<File> {
-  const blob = await renderShareCard({ summary, youId, drawing });
+  const blob = await renderShareCard({ summary, youId, drawing, festive });
   return new File([blob], CARD_FILE, { type: 'image/png' });
 }
 
@@ -123,6 +126,8 @@ function useStatus(): [string, (text: string) => void] {
 
 interface Props {
   summary: GameSummary;
+  /** The festival the game is dressed for: its greeting opens the message. */
+  festive: Festive;
   youId: string;
   roomCode: string;
   /** The picture, if it is already made. */
@@ -143,6 +148,7 @@ interface Props {
  */
 export function ShareSheet({
   summary,
+  festive,
   youId,
   roomCode,
   file: given,
@@ -215,8 +221,8 @@ export function ShareSheet({
   }, []);
 
   const invite = roomInviteUrl(roomCode);
-  const text = shareText(summary, youId, invite, true);
-  const publicText = shareText(summary, youId, SITE_URL, false);
+  const text = shareText(summary, youId, invite, true, festive);
+  const publicText = shareText(summary, youId, SITE_URL, false, festive);
   /** The picture now, or the promise of it: a clipboard write must start inside the tap. */
   const picture = (): Blob | Promise<Blob> => file ?? pending.current ?? makeCard.current();
 
@@ -324,7 +330,7 @@ export function ShareSheet({
 
         <div className="share-preview">
           {url ? (
-            <img src={url} alt={cardAlt(summary, youId)} />
+            <img src={url} alt={cardAlt(summary, youId, festive)} />
           ) : failed ? (
             <div className="share-failed">
               <p>The picture couldn’t be made.</p>

@@ -28,6 +28,7 @@ export const PAGES: Page[] = [
   { file: 'pictionary-words-for-kids.html', path: '/pictionary-words-for-kids', label: 'Words for kids', group: 'words' },
   { file: 'office-pictionary-words.html', path: '/office-pictionary-words', label: 'Office words', group: 'words' },
   { file: 'indian-pictionary-words.html', path: '/indian-pictionary-words', label: 'Indian words', group: 'words' },
+  { file: 'diwali-pictionary-words.html', path: '/diwali-pictionary-words', label: 'Diwali words', group: 'words' },
   { file: 'skribbl-custom-words.html', path: '/skribbl-custom-words', label: 'skribbl custom words', group: 'words' },
   { file: 'online-pictionary.html', path: '/online-pictionary', label: 'Online Pictionary', group: 'guides' },
   { file: 'skribbl-alternative.html', path: '/skribbl-alternative', label: 'skribbl.io alternative', group: 'guides' },

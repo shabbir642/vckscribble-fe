@@ -411,7 +411,7 @@ for (const el of document.querySelectorAll<HTMLElement>('.wordtool')) {
   const key = el.dataset.list;
   if (el.dataset.mode === 'builder') mountBuilder(el);
   else if (isListKey(key)) mountList(el, key);
-  else console.error(`wordtool: data-list="${key ?? ''}" is not a list; use all, easy, hard, kids, office or desi`, el);
+  else console.error(`wordtool: data-list="${key ?? ''}" is not a list; use all, easy, hard, kids, office, desi or diwali`, el);
 }
 
 for (const button of document.querySelectorAll<HTMLButtonElement>('button[data-print]')) {

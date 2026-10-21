@@ -23,13 +23,13 @@ import {
  *   <!--packnav:all-->     a row of links to each pack's card on the full list
  *   {{count:KEY}}          how many words the list has: "1,686"
  *   {{count:KEY:floor}}    the same rounded down to a multiple of 50, for "1,650+"
- * where KEY is all, easy, hard, kids, office or desi. Counts work anywhere,
+ * where KEY is all, easy, hard, kids, office, desi or diwali. Counts work anywhere,
  * <title> and meta tags included, so no page claims a number its list doesn't
  * have. Anything unknown or left over throws: the build fails rather than
  * ship a title that says {{count:…}}.
  */
 
-const KEYS: readonly ListKey[] = ['all', 'easy', 'hard', 'kids', 'office', 'desi'];
+const KEYS: readonly ListKey[] = ['all', 'easy', 'hard', 'kids', 'office', 'desi', 'diwali'];
 
 /** Where the pages put their sections; keeps the page source readable. */
 const IN = '      ';
@@ -93,22 +93,23 @@ function byPack(words: Word[], packs: readonly WordPackId[]): Card[] {
 const packOrder = (w: Word, packs: readonly WordPackId[]) =>
   PACKS.findIndex((p) => p.id === shownIn(w, packs));
 
+/** A labelled row per rating, Easy first. */
+const byTier = (words: Word[]): Card['rows'] =>
+  ([1, 2, 3] as const).map((t) => ({
+    label: TIER_LABELS[t],
+    words: alphabetical(words.filter((w) => w.tier === t)),
+  }));
+
 const CARDS: Record<ListKey, () => Card[]> = {
   // The whole library pack by pack, as the lobby offers it: a word in two
   // packs is on both cards, and each card's count is its pack's.
   all: () =>
-    PACKS.map((p) => {
-      const words = list('all').filter((w) => inPack(w, p.id));
-      return {
-        heading: p.label,
-        emoji: p.emoji,
-        id: `pack-${p.id}`,
-        rows: ([1, 2, 3] as const).map((t) => ({
-          label: TIER_LABELS[t],
-          words: alphabetical(words.filter((w) => w.tier === t)),
-        })),
-      };
-    }),
+    PACKS.map((p) => ({
+      heading: p.label,
+      emoji: p.emoji,
+      id: `pack-${p.id}`,
+      rows: byTier(list('all').filter((w) => inPack(w, p.id))),
+    })),
   easy: () => byPack(list('easy'), NON_SLANG_PACKS),
   hard: () => byPack(list('hard'), PACKS.map((p) => p.id)),
   // By age, and within an age the animals together, then the food, and so on.
@@ -154,6 +155,12 @@ const CARDS: Record<ListKey, () => Card[]> = {
   desi: () => {
     const desi = PACKS.find((p) => p.id === 'desi')!;
     return [{ heading: desi.label, emoji: desi.emoji, rows: [{ words: alphabetical(list('desi')) }] }];
+  },
+  // Rated, as on the full list: a host picking a difficulty for the family
+  // or the office can see what each one deals.
+  diwali: () => {
+    const diwali = PACKS.find((p) => p.id === 'diwali')!;
+    return [{ heading: diwali.label, emoji: diwali.emoji, rows: byTier(list('diwali')) }];
   },
 };
 
