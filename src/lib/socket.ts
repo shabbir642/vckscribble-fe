@@ -227,12 +227,11 @@ function leaveDirect(rememberFor: number): void {
   socket.io.opts.transports = ['websocket', 'polling'];
   socket.io.timeout(20000);
   if (rememberFor > 0) rememberBlocked(rememberFor);
-  // Connected on a bad route: move now. Otherwise the manager's own next
-  // attempt goes the new way.
-  if (socket.connected) {
-    socket.disconnect();
-    socket.connect();
-  }
+  // Connected on a bad route: move now, the way a dropped connection does,
+  // and the manager's reconnect goes the new way. Not socket.disconnect():
+  // the server takes that for the Leave button, and a host would hand the
+  // room to someone else on the spot instead of getting their seat back.
+  if (socket.connected) socket.io.engine?.close();
 }
 
 const pingOnce = (timeoutMs: number) =>
