@@ -56,15 +56,103 @@
 .guide .closing { text-align: center; color: var(--paper); padding: 10px 0 4px; }
 .guide .closing p { margin: 0 auto 18px; font-weight: 700; font-size: 1.15rem; }
 
+/* The paragraph that says what a section is for, a step up from the rest. */
+.guide .lede { font-size: 1.15rem; font-weight: 700; }
+
+/* Calls to action side by side, wrapping. A plain button among them (Print
+   this list) is the white, secondary kind, the same size as the links. */
+.cta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.guide .intro .cta-row { margin-top: 22px; }
+.guide .cta-row .cta { margin-top: 0; }
+.cta.secondary { background: var(--paper); }
+.cta-row button { font-size: 1.25rem; padding: 16px 24px; border-radius: 18px; box-shadow: var(--shadow); }
+.cta-row button:hover:not(:disabled) { box-shadow: 5px 5px 0 var(--ink); }
+@media (max-width: 520px) {
+  /* Wrapped on a phone, each fills its row instead of leaving a ragged edge. */
+  .cta-row > * { flex: 1 1 auto; text-align: center; }
+}
+
+/* How-tos as numbered steps. Scoped and reset on purpose: the podium in
+   index.css has a .steps too, and guide pages load both style sheets. */
+.guide .steps {
+  display: grid; gap: 14px; width: auto; justify-content: normal; align-items: normal;
+  list-style: none; padding: 0; margin: 14px 0 0; counter-reset: step;
+}
+.guide .steps > li { counter-increment: step; position: relative; padding-left: 48px; min-height: 34px; }
+.guide .steps > li::before {
+  content: counter(step);
+  /* Centred on the first line of text (16px at 1.45). */
+  position: absolute; left: 0; top: -5px;
+  width: 34px; height: 34px; display: grid; place-items: center;
+  font: 700 1.05rem/1 var(--display); color: var(--ink);
+  background: var(--yellow); border: 2.5px solid var(--ink); border-radius: 50%;
+}
+
+/* An aside worth reading before using the list: who checked it, who it's not for. */
+.guide .note {
+  max-width: none; color: var(--ink); font-weight: 700;
+  background: var(--paper-tint); border: 2px solid var(--ink); border-radius: var(--radius);
+  padding: 12px 16px;
+}
+
+/* Word lists, written in at build time (site/words.ts): a card per pack or
+   age, its size in a pill, and Easy / Medium / Hard rows on the full list. */
+.guide .word-group { scroll-margin-top: 16px; }
+.guide .count {
+  display: inline-block; vertical-align: middle; margin-left: 4px; white-space: nowrap;
+  font: 700 0.85rem/1 var(--body); color: var(--ink);
+  background: var(--paper-tint); border: 2px solid var(--ink); border-radius: 999px; padding: 5px 10px;
+}
+.guide .tier { margin: 18px 0 0; font-size: 1.05rem; color: var(--ink-soft); }
+.guide .tier .count { font-size: 0.75rem; padding: 3px 8px; color: var(--ink-soft); border-color: currentColor; }
+
+/* Jump to a pack: a row of sticker links, fine on indigo or on a card. */
+.guide .packnav { display: flex; flex-wrap: wrap; gap: 8px; }
+.guide .packnav a {
+  display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+  font: 800 0.9rem/1.2 var(--body); color: var(--ink);
+  background: var(--paper); border: 2px solid var(--ink); border-radius: 999px;
+  box-shadow: var(--shadow-sm); padding: 6px 12px;
+  transition: transform 90ms ease, box-shadow 90ms ease;
+}
+.guide .packnav a:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--ink); }
+.guide .packnav a:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--ink); }
+@media (pointer: coarse) {
+  .guide .packnav a { padding: 9px 14px; }
+}
+
 .site-foot {
   max-width: 760px; margin: 0 auto; padding: 24px 16px 40px;
   color: var(--paper); text-align: center; font-size: 0.9rem;
 }
 .site-foot nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px; margin-bottom: 14px; }
+.site-foot .foot-label { flex-basis: 100%; font: 600 0.95rem/1.2 var(--display); opacity: 0.75; }
 .site-foot a { color: var(--paper); font-weight: 800; }
 .site-foot a[aria-current='page'] { color: var(--yellow); text-decoration: none; }
 .site-foot p { opacity: 0.75; font-size: 0.8rem; }
 
 @media (prefers-reduced-motion: reduce) {
-  .cta { transition: none; }
+  .cta, .guide .packnav a { transition: none; }
+}
+
+/* On paper: ink on white, no buttons, and the words as plain columns, so a
+   list prints on a few sheets and still says where it came from. */
+@media print {
+  @page { margin: 14mm; }
+  html, body { background: #fff; }
+  body { background-image: none; }
+  .site-head, .site-foot, .cta-row, .wordtool, .packnav, .faq, .cta { display: none !important; }
+  .guide { max-width: none; padding: 0; gap: 14pt; }
+  .guide .intro, .guide .closing { color: var(--ink); padding: 0; }
+  .guide .intro h1 { text-shadow: none; font-size: 22pt; }
+  .guide .intro p, .guide .closing p { opacity: 1; max-width: none; }
+  .guide .card { border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+  .guide h2, .guide h3 { break-after: avoid; }
+  .guide .count { border: 0; background: none; padding: 0; color: var(--ink-soft); }
+  .guide .words { display: block; columns: 4 9em; column-gap: 18pt; margin-top: 6pt; }
+  .guide .words li {
+    background: none; border: 0; border-radius: 0; padding: 0 0 2pt;
+    font-weight: 500; font-size: 10.5pt; break-inside: avoid;
+  }
+  .guide::after { content: 'From drawdle.in'; font-size: 9pt; color: var(--ink-soft); text-align: center; }
 }

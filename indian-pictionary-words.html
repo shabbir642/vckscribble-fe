@@ -3,12 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>150+ Indian Pictionary Words for Game Night | Drawdle</title>
-    <meta name="description" content="157 Pictionary words for Indian players: food, festivals, cricket, Bollywood films and Hinglish ideas like jugaad. Free to use or play online." />
+    <title>{{count:desi:floor}}+ Indian Pictionary Words for Game Night | Drawdle</title>
+    <meta name="description" content="{{count:desi}} Pictionary words for Indian players: food, festivals, cricket, Bollywood and Hinglish ideas like jugaad. Print them or play online, free." />
     <link rel="canonical" href="https://drawdle.in/indian-pictionary-words" />
     <meta property="og:url" content="https://drawdle.in/indian-pictionary-words" />
-    <meta property="og:title" content="150+ Pictionary words for Indian players" />
+    <meta property="og:title" content="{{count:desi:floor}}+ Pictionary words for Indian players" />
     <meta property="og:description" content="Food, festivals, cricket, Bollywood and jugaad: draw them at home or play them online." />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Drawdle", "item": "https://drawdle.in/" },
+          { "@type": "ListItem", "position": 2, "name": "Pictionary words", "item": "https://drawdle.in/pictionary-words" },
+          { "@type": "ListItem", "position": 3, "name": "Indian Pictionary words", "item": "https://drawdle.in/indian-pictionary-words" }
+        ]
+      }
+    </script>
     <!--site:head-->
   </head>
   <body>
@@ -17,16 +28,20 @@
       <section class="intro">
         <h1>Pictionary words for Indian players</h1>
         <p>
-          157 words that every Indian group gets: food, festivals, cricket, Bollywood and a
-          few very desi ideas. Use them for Pictionary at home or dumb charades at a party, or
-          play them online in Drawdle's Desi pack.
+          {{count:desi}} words that every Indian group gets: food, festivals, cricket, Bollywood
+          and a few very desi ideas. Use them for Pictionary at home or dumb charades at a party,
+          or play them online in Drawdle's Desi pack.
         </p>
-        <a class="cta" href="/">Play these online</a>
+        <div class="wordtool" data-list="desi" data-handoff="packs" data-packs="desi" data-difficulty="hard"></div>
+        <div class="cta-row">
+          <a class="cta secondary" href="/pictionary-word-generator">Open the word generator</a>
+          <button type="button" data-print>Print this list</button>
+        </div>
       </section>
 
       <section class="card" id="food">
         <h2>Food and drink</h2>
-        <p>The easiest place to start: everyone in India can draw a samosa.</p>
+        <p>The easiest place to start: everyone in India can draw a ladoo.</p>
         <ul class="words">
           <li>samosa</li>
           <li>jalebi</li>
@@ -245,9 +260,8 @@
       <section class="card">
         <h2>Play these words online</h2>
         <ol>
-          <li>Open <a href="/">drawdle.in</a> and create a room.</li>
-          <li>In the room settings, switch on the <strong>Desi</strong> pack. Turn the others off for an all-Indian game.</li>
-          <li>Pick Easy for kids and mixed families, Hard if you want “jugaad” and “log kya kahenge”.</li>
+          <li>Tap “Play these online” at the top of this page, type your name and create a room: it starts with only the <strong>Desi</strong> pack. Or open <a href="/">drawdle.in</a>, create a room and switch on the Desi pack in the room settings, alone or with others.</li>
+          <li>Pick Easy for kids and mixed families, Hard if you want “jugaad” and “log kya kahenge”. A room made with “Play these online” starts on Hard.</li>
           <li>Share the invite link on your family or friends' WhatsApp group.</li>
         </ol>
         <p>
@@ -256,11 +270,40 @@
         </p>
       </section>
 
+      <section class="card">
+        <h2>More word lists</h2>
+        <ul>
+          <li><a href="/pictionary-words-for-kids">Pictionary words for kids</a>, sorted by age. Diya, rangoli, Holi and the kite festival are in the list for ages 7 to 9.</li>
+          <li><a href="/easy-pictionary-words">Easy Pictionary words</a> that draw themselves, for warm-ups and grandparents.</li>
+          <li><a href="/hard-pictionary-words">Hard Pictionary words</a>, and how to draw them.</li>
+          <li><a href="/office-pictionary-words">Office Pictionary words</a>, from the stapler to “circle back”.</li>
+          <li><a href="/pictionary-words">Every Pictionary word</a>, all {{count:all}} of them, by theme.</li>
+          <li>Or let the <a href="/pictionary-word-generator">word generator</a> pick for you, with a timer and team scores for games at home.</li>
+        </ul>
+      </section>
+
+      <section class="card faq">
+        <h2>Questions</h2>
+        <details>
+          <summary>What are good Indian words for Pictionary?</summary>
+          <p>Food is the easiest start: ladoo, roti, kulfi. Festivals like Holi and Diwali are just as quick. Street food like samosa and vada pav, and cricket words like sixer, take a little more. Save the Bollywood titles and Hinglish ideas like “jugaad” for when everyone is warmed up.</p>
+        </details>
+        <details>
+          <summary>Can I use these words for dumb charades?</summary>
+          <p>Yes. The Bollywood films are made for it, and most of the food, festival and cricket words act out as well as they draw.</p>
+        </details>
+        <details>
+          <summary>Are all of these words in the online game?</summary>
+          <p>Yes, every one: together they are Drawdle's Desi pack. Switch it on in the room settings, on its own or with other packs.</p>
+        </details>
+      </section>
+
       <section class="closing">
         <p>Somebody has to draw “sharma ji ka beta”. Might as well be your cousin.</p>
-        <a class="cta" href="/">Start a game</a>
+        <a class="cta" href="/?packs=desi&amp;difficulty=hard">Start a Desi game</a>
       </section>
     </main>
     <!--site:footer-->
+    <script type="module" src="/src/wordtool.ts"></script>
   </body>
 </html>

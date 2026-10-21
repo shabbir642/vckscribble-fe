@@ -829,3 +829,372 @@ body[data-screen='room'] .about { display: none; }
   border: 2px solid var(--ink); border-radius: 999px; box-shadow: var(--shadow-sm);
   padding: 6px 14px; font-weight: 800;
 }
+
+/* ------------------------------------------------ home: room preset */
+/* Packs or words a guide page sent the player here with, said plainly before
+   the room exists, and easy to turn down. Yellow, as for a picked setting. */
+.preset-note {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 2px 12px;
+  background: var(--yellow-soft); border: 2px solid var(--ink); border-radius: var(--radius);
+  padding: 8px 10px 8px 14px; margin-bottom: 14px;
+}
+.preset-note p { flex: 1 1 14em; font-weight: 700; font-size: 0.95rem; line-height: 1.35; }
+.preset-note button.link { flex: none; }
+
+/* ------------------------------------------------ home: records line */
+/* Your personal records, under your name: a reason to play another. */
+.records-line { margin: -8px 0 16px; color: var(--ink-soft); font-weight: 700; font-size: 0.85rem; }
+
+/* --------------------------------------------------------- results */
+/* The end of a game, over the whole screen (Finale.tsx): the game's own
+   indigo and doodles with white stickers on top, Play again and Share pinned
+   to the bottom. On a phone it is the screen; on anything bigger, a column
+   over a scrim. The opening is one CSS sequence, timed with Finale.tsx: the
+   banner and podium at once, the blocks rising third to first, then your
+   game and the awards popping in, all done by about 1.8 s. */
+.finale-layer {
+  position: fixed; left: 0; top: 0; z-index: 40;
+  width: 100%;
+  height: var(--app-h, 100vh);
+  height: var(--app-h, 100dvh);
+  display: flex; justify-content: center; align-items: flex-start;
+}
+.finale-layer[hidden] { display: none; }
+.finale-scrim { display: none; }
+.finale {
+  position: relative; display: flex; flex-direction: column;
+  width: 100%; height: 100%; overflow: hidden;
+  color: var(--paper);
+  background-color: var(--indigo);
+  /* The page's own doodle tile (see body). */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='0.11' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='18' y='34' width='30' height='34' rx='5'/%3E%3Cpath d='M48 42c11 0 11 18 0 18'/%3E%3Cpath d='M27 26c-4-5 4-8 0-14M38 26c-4-5 4-8 0-14'/%3E%3Cpath d='M150 18v42a9 9 0 0 1-18 0V24a6 6 0 0 1 12 0v34'/%3E%3Crect x='26' y='130' width='46' height='46' rx='4' transform='rotate(-8 49 153)'/%3E%3Cpath d='M36 148h24M36 158h18' transform='rotate(-8 49 153)'/%3E%3Cpath d='M92 84h46a10 10 0 0 1 10 10v18a10 10 0 0 1-10 10h-30l-12 11v-11h-4a10 10 0 0 1-10-10V94a10 10 0 0 1 10-10z'/%3E%3Cpath d='M128 196l22-22 14 12 28-34'/%3E%3Cpath d='M178 152h14v14'/%3E%3C/g%3E%3C/svg%3E");
+  animation: fade 180ms ease-out both;
+}
+/* Focus lands on the dialog and its heading so a screen reader starts there;
+   neither is a control, so neither gets a ring. */
+.finale:focus-visible, .finale-top h2:focus-visible { outline: none; }
+.finale .confetti { z-index: 3; }
+.finale button.link { color: var(--yellow); }
+.finale button.link:hover:not(:disabled) { color: var(--yellow-soft); }
+.finale .visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+
+/* What this is, and the ways out: the chat, and (for the host) the lobby. */
+.finale-top {
+  flex: none; display: flex; align-items: center; gap: 6px 12px;
+  padding: 10px max(12px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left));
+}
+.finale-top h2 { flex: 1; min-width: 0; font-size: 1.4rem; line-height: 1.1; text-shadow: 2px 2px 0 var(--ink); }
+.finale-top button.link { flex: none; white-space: nowrap; }
+.finale-chat { flex: none; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.finale-badge {
+  min-width: 22px; padding: 3px 6px; border-radius: 999px;
+  background: var(--pink); border: 2px solid var(--ink);
+  font: 700 0.75rem/1 var(--display); text-align: center;
+}
+
+/* Everything else scrolls inside, between the top row and the bar. */
+.finale-body {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  display: grid; gap: 22px; align-content: start; justify-items: center;
+  padding: 6px max(16px, env(safe-area-inset-right)) 28px max(16px, env(safe-area-inset-left));
+}
+/* Tab reaches it so arrow keys can scroll it; the ring sits inside, where the
+   panel's edges can't clip it. */
+.finale-body:focus-visible { outline: 3px solid var(--yellow); outline-offset: -3px; }
+.finale-body > *, .finale-details > * { width: min(560px, 100%); }
+.finale-body > .finale-details { display: grid; gap: 22px; justify-items: center; width: 100%; }
+.finale-joined {
+  background: var(--yellow-soft); color: var(--ink);
+  border: var(--outline); border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  padding: 10px 14px; font-weight: 800; text-align: center; text-wrap: balance;
+}
+.finale-section { display: grid; gap: 12px; }
+.finale-section > h3 { margin: 0; text-align: center; font-size: 1.2rem; text-shadow: 2px 2px 0 var(--ink); }
+
+/* The winner and the podium, made for the canvas overlay's dark scrim and
+   just as legible on the indigo. */
+.finale-hero { display: grid; gap: 12px; justify-items: center; text-align: center; }
+.finale .winner-banner {
+  font-size: clamp(1.5rem, 5vw, 2.2rem); line-height: 1.1; text-wrap: balance;
+  animation: pop 340ms cubic-bezier(0.25, 1.4, 0.5, 1) both;
+}
+.finale .podium { width: 100%; }
+/* Clipped at the floor only, so each block rises out of it while the crown
+   can still drop in from above. */
+.finale .steps { list-style: none; margin: 0; padding: 10px 0 0; clip-path: inset(-80px -40px 0 -40px); }
+.finale .step { animation: finale-rise 560ms cubic-bezier(0.25, 1.25, 0.5, 1) both; }
+.finale .step.place-3 { animation-delay: 0.15s; }
+.finale .step.place-2 { animation-delay: 0.35s; }
+.finale .step.place-1 { animation-delay: 0.55s; }
+.finale .step.left { opacity: 0.6; }
+/* The crown drops onto the winner once their block is up, then bobs. */
+.finale .step .crown-bob {
+  animation: finale-crown 360ms ease-out 1.05s both, bob 1.8s ease-in-out 1.41s infinite;
+}
+@keyframes finale-rise { from { transform: translateY(105%); } }
+@keyframes finale-crown {
+  from { opacity: 0; transform: translateY(-16px) rotate(-6deg); }
+  to { opacity: 1; transform: translateY(0) rotate(-6deg); }
+}
+
+/* Your game: your place, your numbers, your records. */
+.your-game {
+  display: grid; gap: 10px; text-align: left;
+  background: var(--paper); color: var(--ink);
+  border: var(--outline); border-radius: var(--radius-lg); box-shadow: var(--shadow);
+  padding: 14px 16px 16px;
+  animation: pop 340ms cubic-bezier(0.25, 1.4, 0.5, 1) 0.7s both;
+}
+.your-game h3 { margin: 0; font: 800 0.8rem/1.2 var(--body); color: var(--ink-soft); }
+.your-game .place { font: 700 1.35rem/1.15 var(--display); }
+.your-game ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.your-game .stats li {
+  background: var(--paper-tint); border: 2px solid var(--ink); border-radius: 999px;
+  padding: 4px 10px; font-weight: 800; font-size: 0.88rem;
+}
+/* New personal bests: yellow, as for the winner. */
+.your-game .milestones li {
+  background: var(--yellow); border: 2px solid var(--ink); border-radius: 999px; box-shadow: var(--shadow-sm);
+  padding: 4px 12px; font-weight: 800; font-size: 0.9rem;
+  animation: pop 300ms cubic-bezier(0.25, 1.4, 0.5, 1) 1s both;
+}
+.your-game .records { color: var(--ink-soft); font-weight: 700; font-size: 0.85rem; }
+
+/* Awards: stickers slapped on one after another (--i is the order). */
+.awards {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 14px 12px;
+}
+.award {
+  display: grid; justify-items: center; align-content: start; gap: 3px; min-width: 0;
+  text-align: center; color: var(--ink); background: var(--paper);
+  border: var(--outline); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 12px 10px 10px;
+  rotate: -1.5deg;
+  animation: pop 300ms cubic-bezier(0.25, 1.4, 0.5, 1) both;
+  animation-delay: calc(1s + var(--i, 0) * 120ms);
+}
+.award:nth-child(even) { rotate: 1.5deg; }
+.award.mine { background: var(--yellow-soft); }
+.award-emoji { font-size: 2rem; line-height: 1.15; }
+.award-title { font: 600 1.05rem/1.15 var(--display); }
+.award-blurb { font-size: 0.75rem; line-height: 1.25; font-weight: 700; color: var(--ink-soft); }
+.award-who {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  max-width: 100%; margin-top: 4px; font-weight: 800; font-size: 0.9rem;
+}
+.award-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.award-you { flex: none; color: var(--ink-soft); font-weight: 700; }
+.award-value { font: 700 1rem var(--display); color: var(--green-ink); }
+
+/* The drawing of the game on white paper (the replay itself is transparent),
+   its caption stuck to the bottom edge as on the share picture. */
+.best-drawing figure { margin: 0; display: grid; justify-items: center; }
+.best-drawing .frame {
+  width: 100%; aspect-ratio: 4 / 3; overflow: hidden;
+  background: var(--paper); border: var(--outline); border-radius: var(--radius-lg); box-shadow: var(--shadow);
+}
+.best-drawing canvas, .best-drawing .shimmer { display: block; width: 100%; height: 100%; }
+.best-drawing figcaption {
+  position: relative; display: grid; justify-items: center; gap: 8px;
+  max-width: 94%; margin-top: -20px;
+}
+.best-drawing .caption {
+  background: var(--yellow); color: var(--ink);
+  border: var(--outline); border-radius: 18px; box-shadow: var(--shadow-sm);
+  padding: 6px 16px; font: 700 1.1rem/1.2 var(--display); text-align: center; overflow-wrap: anywhere;
+}
+.best-drawing .meta { color: #d5d2ff; font-weight: 800; font-size: 0.9rem; text-align: center; }
+.finale .best-drawing, .finale .finale-others { animation: fade 400ms ease-out 0.9s both; }
+
+/* Everyone off the podium. */
+.finale-ranks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.finale-ranks li {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--paper); color: var(--ink);
+  border: 2.5px solid var(--ink); border-radius: var(--radius-sm);
+  padding: 6px 12px 6px 10px; font-weight: 800;
+}
+.finale-ranks li.me { background: var(--yellow-soft); }
+.finale-ranks li.left { opacity: 0.6; }
+.finale-ranks .rank { flex: none; min-width: 30px; font-family: var(--display); color: var(--ink-soft); }
+.finale-ranks .who { flex: 1; min-width: 0; display: flex; gap: 5px; }
+.finale-ranks .pname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.finale-ranks .you { flex: none; color: var(--ink-soft); font-weight: 700; }
+.finale-ranks .tag {
+  flex: none; padding: 1px 8px; border: 2px solid var(--ink-soft); border-radius: 999px;
+  color: var(--ink-soft); font-size: 0.75rem;
+}
+.finale-ranks .score { flex: none; font-family: var(--display); font-weight: 600; color: var(--green-ink); }
+
+/* Pinned to the bottom, clear of the home indicator. */
+.finale-bar {
+  flex: none; display: grid; gap: 8px;
+  padding: 10px max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: var(--indigo-deep); border-top: var(--outline);
+}
+.finale-wait {
+  color: #d5d2ff; font-weight: 700; font-size: 0.9rem; text-align: center;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.finale-actions { display: flex; gap: 10px; }
+.finale-actions > button { flex: 1; min-width: 0; line-height: 1.15; }
+.finale-bar > .finale-more { justify-self: center; }
+
+/* Loading: the picture, or the drawing, on its way. */
+.finale .shimmer, .share-preview .shimmer {
+  background: linear-gradient(100deg, var(--paper-tint) 30%, var(--paper) 50%, var(--paper-tint) 70%);
+  background-size: 300% 100%;
+  animation: finale-shimmer 1.3s linear infinite;
+}
+@keyframes finale-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+
+/* Back from the chat: everything where it ended up, nothing replayed. */
+.finale.calm,
+.finale.calm .winner-banner,
+.finale.calm .step,
+.finale.calm .your-game,
+.finale.calm .milestones li,
+.finale.calm .award,
+.finale.calm .best-drawing,
+.finale.calm .finale-others { animation: none; }
+.finale.calm .step .crown-bob { animation: bob 1.8s ease-in-out infinite; }
+
+/* While the results are minimised, the word strip's way back to them. */
+.word-strip .results-open { background: var(--yellow); white-space: nowrap; }
+
+/* Phones: one row of everyday buttons, a smaller podium. */
+@media (max-width: 600px) {
+  .finale-top h2 { font-size: 1.2rem; }
+  .finale .step.place-1 .block { height: 96px; }
+  .finale .step.place-2 .block { height: 72px; }
+  .finale .step.place-3 .block { height: 54px; }
+  .finale .step .medal { font-size: 1.35rem; }
+  .finale .step .avatar { width: 46px !important; height: 46px !important; font-size: 27px !important; }
+  .finale .step.place-1 .avatar { width: 56px !important; height: 56px !important; font-size: 32px !important; }
+}
+@media (max-width: 420px) {
+  .finale-bar button.big {
+    font-size: 1rem; padding: 12px 10px; border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  }
+  .finale-wide { display: none; }
+  /* The host alone: the long "invite one more" line gets a row of its own. */
+  .finale-actions.stack { flex-direction: column; }
+  .finale-actions.stack .finale-wide { display: inline; }
+}
+
+/* Landscape phones: the podium stays on the left, the rest scrolls on the
+   right, and the bar is one row. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .finale-top { padding-top: 4px; padding-bottom: 2px; }
+  .finale-top h2 { font-size: 1.1rem; }
+  .finale-top button.small { padding: 5px 10px; }
+  .finale-body {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    align-items: start; column-gap: 24px; row-gap: 0; padding-top: 2px;
+  }
+  .finale-joined { grid-column: 2; grid-row: 1; margin-bottom: 14px; }
+  .finale-hero { grid-column: 1; grid-row: 1 / span 2; position: sticky; top: 0; }
+  .finale-body > .finale-details { grid-column: 2; grid-row: 2; }
+  .finale .winner-banner { font-size: 1.3rem; }
+  .finale .step.place-1 .block { height: 64px; }
+  .finale .step.place-2 .block { height: 48px; }
+  .finale .step.place-3 .block { height: 36px; }
+  .finale .step .block { gap: 0; }
+  .finale .step .medal { font-size: 1rem; }
+  .finale .step .place { font-size: 0.75rem; }
+  .finale .step .crown-bob { font-size: 1.15rem; }
+  .finale .step .pname { font-size: 0.85rem; }
+  .finale .step .pts { font-size: 0.75rem; }
+  .finale .step .avatar { width: 36px !important; height: 36px !important; font-size: 21px !important; }
+  .finale .step.place-1 .avatar { width: 44px !important; height: 44px !important; font-size: 26px !important; }
+  .finale-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
+    padding-top: 6px; padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+  .finale-wait { flex: 1 1 180px; text-align: left; }
+  .finale-bar .invite-link { flex: 1 1 260px; }
+  .finale-actions { flex: 1 1 300px; }
+  .finale-bar button.big {
+    font-size: 1rem; padding: 10px 12px; border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  }
+}
+
+/* Tablets and computers: a column over the dimmed game. */
+@media (min-width: 601px) and (min-height: 521px) {
+  .finale-scrim {
+    display: block; position: absolute; inset: 0;
+    background: rgba(30, 27, 75, 0.78); animation: fade 180ms ease-out both;
+  }
+  .finale {
+    width: min(640px, calc(100% - 32px)); height: calc(100% - 40px); margin-top: 20px;
+    border: var(--outline); border-radius: var(--radius-lg); box-shadow: 6px 6px 0 var(--ink);
+    animation: pop 300ms cubic-bezier(0.25, 1.4, 0.5, 1) both;
+  }
+}
+
+/* ----------------------------------------------------- share sheet */
+/* Getting the results picture out (ShareSheet.tsx), above the results: a
+   sheet from the bottom on a phone, a card in the middle elsewhere. It fits
+   a 375×548 phone without scrolling. */
+.share-layer { position: fixed; inset: 0; z-index: 45; display: flex; align-items: flex-end; justify-content: center; }
+.share-scrim { position: absolute; inset: 0; background: rgba(30, 27, 75, 0.6); animation: fade 180ms ease-out both; }
+.share-sheet {
+  position: relative; width: 100%; max-height: 100%; overflow-y: auto; overscroll-behavior: contain;
+  display: grid; gap: 12px;
+  background: var(--paper); color: var(--ink);
+  border: var(--outline); border-bottom: none; border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 12px max(16px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  animation: share-up 260ms cubic-bezier(0.25, 1.2, 0.5, 1) both;
+}
+.share-sheet:focus-visible, .share-head h2:focus-visible { outline: none; }
+@keyframes share-up { from { transform: translateY(100%); } }
+.share-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.share-head h2 { font-size: 1.25rem; }
+.share-preview {
+  justify-self: center; height: 30vh; max-height: 300px; aspect-ratio: 4 / 5;
+  background: var(--paper-tint); border: 2.5px solid var(--ink); border-radius: var(--radius-sm); overflow: hidden;
+}
+.share-preview img, .share-preview .shimmer { display: block; width: 100%; height: 100%; object-fit: contain; }
+.share-failed {
+  height: 100%; display: grid; place-content: center; justify-items: center; gap: 8px; padding: 10px;
+  text-align: center; font-weight: 700; font-size: 0.85rem; color: var(--ink-soft);
+}
+.share-main { display: grid; gap: 6px; }
+.share-note { text-align: center; color: var(--ink-soft); font-weight: 700; font-size: 0.85rem; }
+.share-utils { display: flex; flex-wrap: wrap; gap: 8px; }
+.share-utils > button { flex: 1 1 0; white-space: nowrap; }
+.share-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+/* An app to send to: a link or a button, the same sticker either way. */
+.share-target {
+  display: grid; place-items: center; gap: 2px; min-height: 52px; padding: 8px 6px;
+  font: 600 1rem/1.1 var(--display); color: var(--ink); text-decoration: none; text-align: center;
+  background: var(--paper); border: var(--outline); border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  cursor: pointer; transition: transform 90ms ease, box-shadow 90ms ease;
+}
+a.share-target:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--ink); }
+a.share-target:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--ink); }
+.share-target small { font: 700 0.72rem/1.2 var(--body); color: var(--ink-soft); }
+.share-status { min-height: 1.35em; text-align: center; font-weight: 800; font-size: 0.9rem; }
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .share-sheet {
+    width: min(680px, 100%); grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 18px; align-items: start;
+  }
+  .share-preview { grid-column: 1; grid-row: 1 / span 5; height: min(70vh, 260px); }
+  .share-sheet > :not(.share-preview) { grid-column: 2; }
+}
+@media (min-width: 601px) and (min-height: 521px) {
+  .share-layer { align-items: center; padding: 20px; }
+  .share-sheet {
+    width: min(560px, 100%); border-bottom: var(--outline); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow); padding: 16px 20px 18px;
+    animation: pop 260ms cubic-bezier(0.25, 1.4, 0.5, 1) both;
+  }
+  .share-preview { height: min(36vh, 300px); }
+  .share-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}

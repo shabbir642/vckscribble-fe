@@ -1,0 +1,106 @@
+/*
+ * The word tools on the guide pages (src/wordtool.ts): a sticker that picks
+ * a word from the page's list and copies the list, with the way into a game
+ * beside the page's other calls to action; on the skribbl page, the custom
+ * list builder. Built from the game's parts in index.css.
+ */
+
+/* Whatever the script hides stays hidden, whatever display a rule gives it. */
+.wordtool [hidden] { display: none !important; }
+
+/* Room for the tool before the script fills it, so the page doesn't jump
+   when it does. Only where scripts run: elsewhere the div stays empty. */
+@media (scripting: enabled) {
+  .wordtool:empty { min-height: 230px; }
+  .wordtool[data-list='kids']:empty { min-height: 286px; }
+  .wordtool[data-mode='builder']:empty { min-height: 560px; }
+}
+/* The builder is a row taller from here, where Difficulty and size stack (.wt-pair, below). */
+@media (scripting: enabled) and (max-width: 760px) {
+  .wordtool[data-mode='builder']:empty { min-height: 640px; }
+}
+@media (scripting: enabled) and (max-width: 600px) {
+  .wordtool:empty { min-height: 300px; }
+  .wordtool[data-list='kids']:empty { min-height: 382px; }
+  .wordtool[data-mode='builder']:empty { min-height: 940px; }
+}
+.guide .intro .wordtool { margin-top: 22px; }
+
+.wt-card {
+  display: grid; gap: 14px; color: var(--ink); text-align: left;
+  background: var(--paper); border: var(--outline); border-radius: var(--radius-lg); box-shadow: var(--shadow);
+  padding: 18px;
+}
+/* Inside a card already: no sticker on a sticker. */
+.card .wt-card { border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+
+/* The shared .segmented is three across; these say how many with --n. */
+.segmented.cols { grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); }
+.wordtool .segmented button { min-width: 0; padding: 10px 4px; font-size: 0.95rem; }
+
+/* ----------------------------------------------------------- list tools */
+.wt-band { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.wt-band .segmented { flex: 1 1 15rem; max-width: 22rem; }
+.wt-label { font-weight: 800; }
+
+/* The button, and the word it picked beside it (under it on a phone). */
+.wt-pick-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: center; }
+/* As the word is everywhere in the game: yellow. Tall enough for two lines
+   and the pack under them, so the page doesn't shift as words come and go. */
+.wt-word {
+  --size: clamp(1.45rem, 5vw, 2rem);
+  display: grid; align-content: center; justify-items: center; gap: 4px;
+  min-height: calc(var(--size) * 2.2 + 3.1rem);
+  padding: 10px 14px; text-align: center;
+  background: var(--yellow-soft); border: 2.5px solid var(--ink); border-radius: var(--radius);
+}
+.wt-word.empty { background: var(--paper-tint); border-style: dashed; border-color: #b9b4e3; }
+.wt-word.pop { animation: pop 300ms cubic-bezier(0.25, 1.4, 0.5, 1) both; }
+.wt-text { font: 700 var(--size)/1.1 var(--display); overflow-wrap: anywhere; text-wrap: balance; }
+.wt-word.empty .wt-text { font: 700 1rem/1.3 var(--body); color: var(--ink-soft); }
+.wt-meta { font-weight: 800; font-size: 0.85rem; color: var(--ink-soft); }
+.wt-meta:empty { display: none; }
+
+.wt-foot {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  padding-top: 14px; border-top: 2px dashed #cfcbe9;
+}
+.wt-hint { font-size: 0.85rem; font-weight: 700; color: var(--ink-soft); }
+/* No row of calls to action on the page: Play goes at the end of this one. */
+.wt-foot .wt-play { margin-left: auto; }
+.guide .wt-card .cta { margin-top: 0; font-size: 1.05rem; padding: 12px 18px; border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+.wt-status { font-weight: 700; font-size: 0.9rem; color: var(--ink-soft); }
+.wt-status:empty { display: none; }
+.wt-manual { font-size: 0.85rem; min-height: 6em; background: var(--paper-tint); }
+
+@media (max-width: 600px) {
+  .wt-card { padding: 14px; gap: 12px; }
+  .wt-pick-row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .wt-foot .wt-copy { flex: 1 1 auto; }
+  .wt-foot .wt-play { margin-left: 0; flex: 1 1 100%; text-align: center; }
+}
+
+/* -------------------------------------------------------------- builder */
+.wt-builder .field { margin-bottom: 0; }
+.wt-builder .field > label { font-weight: 800; font-size: 0.95rem; }
+.wt-pair { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 14px; }
+.wt-list { min-height: 9em; font: 600 0.95rem/1.45 var(--body); background: var(--paper-tint); }
+.wt-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.wt-actions > * { flex: 1 1 auto; text-align: center; }
+.wt-actions .primary { flex-grow: 2; }
+/* The link sits with the buttons at their size. */
+.guide .wt-actions .cta { font-size: 1.35rem; padding: 16px 22px; border-radius: 18px; box-shadow: var(--shadow); }
+@media (pointer: coarse) {
+  .wordtool .chip { padding: 9px 12px; }
+  /* Below 16px, iOS zooms the page in when a box is tapped. */
+  .wt-list, .wt-manual { font-size: 16px; }
+}
+/* Side by side only at a guide page's full width (.guide stops at 760px,
+   site.css): any narrower and "Medium" overflows its segment. */
+@media (max-width: 760px) {
+  .wt-pair { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .wt-pair { gap: 12px; }
+  .guide .wt-actions .cta { flex-basis: 100%; }
+}

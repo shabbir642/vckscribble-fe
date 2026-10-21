@@ -4,6 +4,8 @@
  * block an AudioContext until the user has interacted with the page.
  */
 let ctx: AudioContext | null = null;
+/** Something has played inside a tap, which older iOS needs before any sound. */
+let primed = false;
 let enabled = read();
 
 function read(): boolean {
@@ -25,26 +27,55 @@ export function toggleSound(): boolean {
   } catch {
     /* preference just won't persist */
   }
+  // Turning sound on is a tap: the moment iOS lets audio start.
+  if (enabled) unlock();
   return enabled;
+}
+
+/** The one context, woken if the browser paused it (or a phone call did). */
+function audio(): AudioContext {
+  ctx ??= new AudioContext();
+  if (ctx.state !== 'running') void ctx.resume().catch(() => {});
+  return ctx;
 }
 
 function tone(freq: number, ms: number, type: OscillatorType = 'sine', gain = 0.05) {
   if (!enabled) return;
   try {
-    ctx ??= new AudioContext();
-    if (ctx.state === 'suspended') void ctx.resume();
-    const osc = ctx.createOscillator();
-    const amp = ctx.createGain();
+    const ac = audio();
+    const osc = ac.createOscillator();
+    const amp = ac.createGain();
     osc.type = type;
     osc.frequency.value = freq;
-    amp.gain.setValueAtTime(gain, ctx.currentTime);
+    amp.gain.setValueAtTime(gain, ac.currentTime);
     // Exponential ramp avoids the click a hard stop produces.
-    amp.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + ms / 1000);
-    osc.connect(amp).connect(ctx.destination);
+    amp.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + ms / 1000);
+    osc.connect(amp).connect(ac.destination);
     osc.start();
-    osc.stop(ctx.currentTime + ms / 1000);
+    osc.stop(ac.currentTime + ms / 1000);
   } catch {
     /* audio is a nicety; never let it break the game */
+  }
+}
+
+/**
+ * iOS only lets audio start inside a tap, so a context first created by a
+ * timer (a countdown running out) stays silent. Called from a tap, this
+ * creates or wakes the context and plays one silent sample, which is what
+ * older iOS versions wait for.
+ */
+function unlock() {
+  if (!enabled) return;
+  try {
+    const ac = audio();
+    if (primed) return;
+    const src = ac.createBufferSource();
+    src.buffer = ac.createBuffer(1, 1, 22050);
+    src.connect(ac.destination);
+    src.start(0);
+    primed = true;
+  } catch {
+    /* audio is a nicety */
   }
 }
 
@@ -86,4 +117,26 @@ export const sfx = {
   finish() {
     [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 180, 'sine'), i * 110));
   },
+  /** An award lands: a short, bright two-note ding. */
+  award() {
+    tone(1175, 80, 'triangle', 0.04);
+    setTimeout(() => tone(1760, 220, 'sine', 0.04), 70);
+  },
+  /** A new personal best: a quick run up into a held major chord. */
+  fanfare() {
+    [392, 523, 659].forEach((f, i) => setTimeout(() => tone(f, 120, 'triangle', 0.04), i * 85));
+    setTimeout(() => {
+      tone(784, 460, 'triangle', 0.035);
+      tone(1047, 460, 'sine', 0.03);
+      tone(1319, 460, 'sine', 0.025);
+    }, 255);
+  },
+  /** The clock ran out: a low buzzer, and a buzz for a phone with its sound turned down. */
+  timeUp() {
+    buzz([200, 100, 200]);
+    tone(330, 180, 'square', 0.03);
+    setTimeout(() => tone(247, 420, 'square', 0.03), 200);
+  },
+  /** Call from a tap before a sound that a timer will play later (see unlock). */
+  unlock,
 };

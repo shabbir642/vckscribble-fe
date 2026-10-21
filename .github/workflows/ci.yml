@@ -5,22 +5,25 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      # Secrets can't appear in `if:` directly; this exposes only whether it exists.
-      HAS_BE_TOKEN: ${{ secrets.BE_REPO_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
 
-      # The contract's source of truth lives in the private backend repo, so CI
-      # checks it out as a sibling. Needs a secret BE_REPO_TOKEN: a PAT (or
-      # fine-grained token) with read access to vckscribble-be.
+      # The contract and the seed word lists have their source of truth in the
+      # backend repo, so CI checks those files out as a sibling. The repo is
+      # public: the default token reads it, no secret needed.
+      #
+      # These checks run against the backend's main. When a change touches the
+      # contract or the seeds, push the backend first and let its CI pass, then
+      # push this repo; pushed the other way round, this run fails on drift.
       - uses: actions/checkout@v4
-        if: env.HAS_BE_TOKEN == 'true'
         with:
           repository: shabbir642/vckscribble-be
-          token: ${{ secrets.BE_REPO_TOKEN }}
+          ref: main
           path: be-src
-          sparse-checkout: src/contract
+          sparse-checkout: |
+            src/contract
+            src/db/packs.seed.ts
+            src/db/words.seed.ts
           sparse-checkout-cone-mode: false
 
       # No version here: it comes from "packageManager" in package.json, and
@@ -30,19 +33,17 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
 
-      # Fails if the vendored contract has drifted from the backend's copy.
-      # This is what replaces the shared workspace package the repo split removed.
+      # Fail if the vendored copies have drifted from the backend's. This is
+      # what replaces the shared workspace package the repo split removed.
       - name: Contract drift check
-        if: env.HAS_BE_TOKEN == 'true'
         run: pnpm contract:check
         env:
           CONTRACT_SOURCE: be-src/src/contract/index.ts
-      - name: Contract drift check (skipped)
-        if: env.HAS_BE_TOKEN != 'true'
-        run: >-
-          echo "::warning title=Contract drift check skipped::Add a BE_REPO_TOKEN
-          secret (read access to vckscribble-be) to verify the vendored contract."
+      - name: Word list drift check
+        run: pnpm words:check
+        env:
+          WORDS_SOURCE: be-src
 
       - run: pnpm typecheck
-      # Built from the committed contract; the check above is what guards it.
+      # Built from the committed copies; the checks above are what guard them.
       - run: pnpm exec vite build

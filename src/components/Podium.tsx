@@ -1,69 +1,73 @@
-import type { Player } from '../generated/contract';
+import type { CSSProperties } from 'react';
+import { ordinal } from '../lib/results';
 import { Avatar } from './Avatar';
 
-interface Ranked {
-  player: Player;
+/** A player's place at the end of a game, from the server's summary or worked out here. */
+export interface Standing {
+  id: string;
+  name: string;
+  avatar: number;
+  score: number;
   /** Competition ranking: two players tied for first are both 1st, next is 3rd. */
   rank: number;
-}
-
-export function rankPlayers(players: Player[]): Ranked[] {
-  const sorted = [...players].sort((a, b) => b.score - a.score);
-  return sorted.map((player) => ({
-    player,
-    rank: sorted.findIndex((p) => p.score === player.score) + 1,
-  }));
+  /** No longer in the room. */
+  left?: boolean;
 }
 
 const MEDAL = ['🥇', '🥈', '🥉'];
-const ORDINAL = ['1st', '2nd', '3rd'];
+
+export const points = (n: number) => `${n} ${n === 1 ? 'point' : 'points'}`;
 
 /**
- * The end of a game: the top three on a podium — first in the middle and
- * tallest, second on the left, third on the right — and everyone else ranked
- * below. Ties share a step and a medal.
+ * Who stands on the podium: the best three of those who scored. A block says
+ * "1st", and nobody comes first with no points (a game nobody scored in has
+ * no podium at all). `standings` is best first.
  */
-export function Podium({ players, youId }: { players: Player[]; youId: string }) {
-  const ranked = rankPlayers(players);
-  const top = ranked.slice(0, 3);
-  const rest = ranked.slice(3);
-  // Visual order: 2nd, 1st, 3rd.
-  const steps = [top[1], top[0], top[2]].filter((x): x is Ranked => Boolean(x));
+export function onPodium(standings: Standing[]): Standing[] {
+  return standings.filter((s) => s.score > 0).slice(0, 3);
+}
 
+/**
+ * The end of a game: the top three on a podium, first in the middle and
+ * tallest, second on the left, third on the right. Ties share a step and a
+ * medal. In the page they come best first, as a screen reader should hear
+ * them; CSS `order` puts them on their steps. The blocks rise third to first
+ * (.finale .step).
+ */
+export function Podium({ standings, youId }: { standings: Standing[]; youId: string }) {
+  const top = onPodium(standings);
+  if (!top.length) return null;
   return (
     <div className="podium">
-      <div className="steps">
-        {steps.map(({ player, rank }) => (
-          <div
-            key={player.id}
-            className={`step place-${Math.min(rank, 3)} ${player.id === youId ? 'me' : ''}`}
-          >
-            <div className="who">
-              {rank === 1 && <span className="crown-bob" aria-hidden="true">👑</span>}
-              <Avatar i={player.avatar} size={rank === 1 ? 64 : 52} />
-              <span className="pname">{player.name}</span>
-              <span className="pts">{player.score} points</span>
-            </div>
-            <div className="block">
-              <span className="medal" aria-hidden="true">{MEDAL[rank - 1] ?? ''}</span>
-              <span className="place">{ORDINAL[rank - 1] ?? `${rank}th`}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {rest.length > 0 && (
-        <ol className="ranks">
-          {rest.map(({ player, rank }) => (
-            <li key={player.id} className={player.id === youId ? 'me' : ''}>
-              <span className="rank">#{rank}</span>
-              <Avatar i={player.avatar} size={28} />
-              <span className="pname">{player.name}</span>
-              <span className="gain">{player.score}</span>
+      <ol className="steps" aria-label="Podium">
+        {top.map((s, i) => {
+          const cls = [
+            'step',
+            `place-${Math.min(s.rank, 3)}`,
+            s.id === youId && 'me',
+            s.left && 'left',
+          ].filter(Boolean).join(' ');
+          // Visual order 2nd, 1st, 3rd.
+          const order: CSSProperties = { order: [2, 1, 3][i] };
+          return (
+            <li key={s.id} className={cls} style={order}>
+              <div className="who">
+                {s.rank === 1 && <span className="crown-bob" aria-hidden="true">👑</span>}
+                <Avatar i={s.avatar} size={s.rank === 1 ? 64 : 52} />
+                <span className="pname">{s.name}</span>
+                <span className="pts">
+                  {points(s.score)}
+                  {s.left ? ' · left' : ''}
+                </span>
+              </div>
+              <div className="block">
+                <span className="medal" aria-hidden="true">{MEDAL[s.rank - 1] ?? ''}</span>
+                <span className="place">{ordinal(s.rank)}</span>
+              </div>
             </li>
-          ))}
-        </ol>
-      )}
+          );
+        })}
+      </ol>
     </div>
   );
 }

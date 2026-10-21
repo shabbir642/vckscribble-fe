@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   ChatMessage,
+  GameSummary,
   Player,
   Reaction,
   Result,
   RoomPreview,
   RoomSettings,
+  RoundPhase,
   RoundState,
   Stroke,
   WordChoice,
@@ -53,7 +55,14 @@ export interface UseRoom {
   assignedWord: string | null;
   secondsLeft: number;
   closeHint: string | null;
+  /** The last game's final scores; null from the moment a game starts until it ends. */
   finalScores: Player[] | null;
+  /**
+   * The server's summary of the game that just ended: awards, the drawing of
+   * the game, everyone's numbers. It arrives just before the game's end (and
+   * again on a refresh), and stays until the next game starts.
+   */
+  summary: GameSummary | null;
   busy: boolean;
   error: string | null;
   you: Player | null;
@@ -116,6 +125,7 @@ export function useRoom(): UseRoom {
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [closeHint, setCloseHint] = useState<string | null>(null);
   const [finalScores, setFinalScores] = useState<Player[] | null>(null);
+  const [summary, setSummary] = useState<GameSummary | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** Guards against a second resume while one is still in flight. */
@@ -127,6 +137,8 @@ export function useRoom(): UseRoom {
   /** Whether this page currently shows a room, readable from socket handlers. */
   const inRoom = useRef(false);
   inRoom.current = room !== null;
+  /** The phase this page last heard of, to tell when a new game begins. */
+  const lastPhase = useRef<RoundPhase | null>(null);
 
   /** Back to the home screen, e.g. when the room no longer exists. */
   const resetRoom = useCallback(() => {
@@ -137,6 +149,8 @@ export function useRoom(): UseRoom {
     setWordOptions(null);
     setAssignedWord(null);
     setFinalScores(null);
+    setSummary(null);
+    lastPhase.current = null;
     dropPlayback();
     strokeStore.clear();
   }, []);
@@ -219,6 +233,23 @@ export function useRoom(): UseRoom {
       if (loadSession()) setReconnecting(true);
     };
 
+    /**
+     * The last game's results stay through its podium and are dropped once a
+     * new game starts: from the podium (play again goes straight to the next
+     * turn) or from the lobby. Also when a reconnect lands mid-game, having
+     * missed the start. Never on the way into `finished`: the summary comes
+     * just before it.
+     */
+    const enterPhase = (next: RoundPhase) => {
+      const prev = lastPhase.current;
+      lastPhase.current = next;
+      const between = (phase: RoundPhase | null) => phase === 'finished' || phase === 'lobby';
+      if (next === 'lobby' || (between(prev) && !between(next))) {
+        setFinalScores(null);
+        setSummary(null);
+      }
+    };
+
     const onState = (p: {
       roomCode: string;
       players: Player[];
@@ -227,6 +258,7 @@ export function useRoom(): UseRoom {
       you: { playerId: string };
       hostWords?: string[];
     }) => {
+      enterPhase(p.round.phase);
       setRoom({
         roomCode: p.roomCode,
         players: p.players,
@@ -239,6 +271,7 @@ export function useRoom(): UseRoom {
     const onPlayers = (p: { players: Player[] }) =>
       setRoom((r) => (r ? { ...r, players: p.players } : r));
     const onRound = (p: RoundState) => {
+      enterPhase(p.phase);
       // A new turn starts with fresh votes.
       if (p.phase !== 'drawing') setMyReaction(null);
       setRoom((r) => {
@@ -255,7 +288,6 @@ export function useRoom(): UseRoom {
       // so a stale picker can never linger into the next phase.
       if (p.phase !== 'selecting') setWordOptions(null);
       if (p.phase !== 'drawing') setAssignedWord(null);
-      if (p.phase === 'lobby') setFinalScores(null);
     };
     const onOptions = (p: { choices: WordChoice[]; allowCustom: boolean }) => {
       setWordOptions(p);
@@ -277,6 +309,8 @@ export function useRoom(): UseRoom {
       setRoom((r) => (r ? { ...r, players: p.players } : r));
       if (p.final) setFinalScores(p.players);
     };
+    // Kept in whatever phase it lands: it is sent just before the game ends.
+    const onSummary = (s: GameSummary) => setSummary(s);
     const onMessage = (m: ChatMessage) => {
       if (m.channel === 'system' && m.text.includes('guessed it')) sfx.someoneGuessed();
       setMessages((prev) => [...prev, m].slice(-MAX_MESSAGES));
@@ -338,6 +372,7 @@ export function useRoom(): UseRoom {
     socket.on('round:hint', onHintMask);
     socket.on('chat:close', onClose);
     socket.on('game:scores', onScores);
+    socket.on('game:summary', onSummary);
     socket.on('draw:stroke', onStroke);
     socket.on('draw:points', onPoints);
     socket.on('draw:reaction', onReaction);
@@ -364,6 +399,7 @@ export function useRoom(): UseRoom {
       socket.off('round:hint', onHintMask);
       socket.off('chat:close', onClose);
       socket.off('game:scores', onScores);
+      socket.off('game:summary', onSummary);
       socket.off('draw:stroke', onStroke);
       socket.off('draw:points', onPoints);
       socket.off('draw:reaction', onReaction);
@@ -580,6 +616,7 @@ export function useRoom(): UseRoom {
     secondsLeft,
     closeHint,
     finalScores,
+    summary,
     busy,
     error,
     you,

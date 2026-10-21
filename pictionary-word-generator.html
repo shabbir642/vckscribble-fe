@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en-IN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Random Pictionary Word Generator with Timer | Drawdle</title>
+    <meta name="description" content="Random Pictionary words by theme and difficulty, with a timer, team scores and a mode that hides the word from guessers. Free, no ads, no sign-up." />
+    <link rel="canonical" href="https://drawdle.in/pictionary-word-generator" />
+    <meta property="og:url" content="https://drawdle.in/pictionary-word-generator" />
+    <meta property="og:title" content="Random Pictionary word generator with a timer" />
+    <meta property="og:description" content="A word to draw at every tap, from {{count:all}} words in 13 themes. With a timer, team scores and a hidden-word mode for game night." />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebApplication",
+            "name": "Random Pictionary word generator",
+            "url": "https://drawdle.in/pictionary-word-generator",
+            "description": "Random Pictionary words by theme and difficulty, with a timer, team scores and a mode that hides the word from guessers.",
+            "applicationCategory": "GameApplication",
+            "operatingSystem": "Any",
+            "browserRequirements": "Requires JavaScript. Works in any modern web browser.",
+            "inLanguage": "en",
+            "isAccessibleForFree": true,
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "INR" },
+            "isPartOf": { "@type": "WebSite", "name": "Drawdle", "url": "https://drawdle.in/" }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "Drawdle", "item": "https://drawdle.in/" },
+              { "@type": "ListItem", "position": 2, "name": "Pictionary words", "item": "https://drawdle.in/pictionary-words" },
+              { "@type": "ListItem", "position": 3, "name": "Word generator", "item": "https://drawdle.in/pictionary-word-generator" }
+            ]
+          }
+        ]
+      }
+    </script>
+    <!--site:head-->
+  </head>
+  <body>
+    <!--site:header-->
+    <main class="guide gen-page">
+      <section class="intro">
+        <h1>Random Pictionary word generator</h1>
+        <p>A word to draw at every tap, with a timer and team scores.</p>
+      </section>
+
+      <!-- The tool's markup is all here, so it is on screen before the script
+           (src/generator.ts) arrives; the script wires it up and keeps it in
+           step with the options. -->
+      <section class="card gen" aria-label="Word generator">
+        <noscript>
+          <p class="gen-noscript">
+            The generator needs JavaScript, which is off in this browser. Every word is listed on
+            the <a href="/pictionary-words">Pictionary words</a> page.
+          </p>
+        </noscript>
+
+        <div class="gen-word empty" data-gen="card">
+          <span class="gen-flag">Time's up!</span>
+          <div class="gen-stage">
+            <span class="gen-text" data-gen="text">Ready to draw?</span>
+          </div>
+          <span class="gen-meta" data-gen="meta">Press New word to get one</span>
+          <span class="gen-cover"><span><span aria-hidden="true">🙈</span> Hidden: press and hold to peek</span></span>
+        </div>
+
+        <div class="gen-under">
+          <label class="gen-check"><input type="checkbox" data-gen="secret" /> Hide the word</label>
+          <button type="button" class="small" data-gen="show" aria-pressed="false" hidden>Show word</button>
+          <button type="button" class="small" data-gen="copy" hidden>Copy word</button>
+        </div>
+
+        <div class="gen-actions">
+          <button type="button" class="primary big" data-gen="primary">New word</button>
+          <button type="button" class="big" data-gen="secondary" hidden>Skip</button>
+        </div>
+        <p class="gen-keys">Press <kbd>N</kbd> for a new word</p>
+        <p class="gen-note" data-gen="note" hidden></p>
+
+        <div class="gen-timer">
+          <button type="button" class="clock idle gen-clock" data-gen="clock" disabled aria-label="Timer off">
+            <span aria-hidden="true" data-gen="clock-text">⏱</span>
+          </button>
+          <div class="segmented cols" style="--n: 4" role="radiogroup" aria-label="Timer" data-gen="timer">
+            <button type="button" role="radio" aria-checked="true" class="on" data-value="0">Off</button>
+            <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="30" aria-label="30 seconds">30s</button>
+            <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="60" aria-label="60 seconds">60s</button>
+            <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="90" aria-label="90 seconds">90s</button>
+          </div>
+          <button type="button" class="small icon gen-sound" data-gen="sound" aria-pressed="true" aria-label="Sound" title="Mute sounds">🔊</button>
+          <div class="gen-bar off" data-gen="bar" aria-hidden="true"><span data-gen="fill"></span></div>
+        </div>
+
+        <div class="gen-options">
+          <button type="button" class="gen-summary" data-gen="summary" aria-expanded="false" aria-controls="gen-panel">
+            <span class="gen-sr">Word options: </span>
+            <span class="gen-sum-packs" data-gen="sum-packs">🧦 Everyday +8</span>
+            <span class="gen-sum-rest" data-gen="sum-rest">· Any</span>
+            <span class="gen-chev" aria-hidden="true">▾</span>
+          </button>
+          <div class="gen-panel" id="gen-panel">
+            <div class="field">
+              <span id="gen-packs-label">Word packs</span>
+              <div class="chips" role="group" aria-labelledby="gen-packs-label" data-gen="packs">
+                <button type="button" class="chip on" aria-pressed="true" data-pack="everyday"><span aria-hidden="true">🧦</span> Everyday things</button>
+                <button type="button" class="chip on" aria-pressed="true" data-pack="animals"><span aria-hidden="true">🐼</span> Animals</button>
+                <button type="button" class="chip on" aria-pressed="true" data-pack="food"><span aria-hidden="true">🍕</span> Food &amp; drink</button>
+                <button type="button" class="chip on" aria-pressed="true" data-pack="desi"><span aria-hidden="true">🪔</span> Desi</button>
+                <button type="button" class="chip" aria-pressed="false" data-pack="office"><span aria-hidden="true">📎</span> Office stuff</button>
+                <button type="button" class="chip on" aria-pressed="true" data-pack="actions"><span aria-hidden="true">🤸</span> Actions</button>
+                <button type="button" class="chip on" aria-pressed="true" data-pack="places"><span aria-hidden="true">🏰</span> Places</button>
+                <button type="button" class="chip on" aria-pressed="true" data-pack="nature"><span aria-hidden="true">🌋</span> Nature &amp; weather</button>
+                <button type="button" class="chip on" aria-pressed="true" data-pack="sports"><span aria-hidden="true">⚽</span> Sports &amp; games</button>
+                <button type="button" class="chip" aria-pressed="false" data-pack="tech"><span aria-hidden="true">💻</span> Tech &amp; gadgets</button>
+                <button type="button" class="chip" aria-pressed="false" data-pack="jobs"><span aria-hidden="true">👩‍🚒</span> Jobs &amp; people</button>
+                <button type="button" class="chip on" aria-pressed="true" data-pack="fantasy"><span aria-hidden="true">🦄</span> Fantasy &amp; fun</button>
+                <button type="button" class="chip" aria-pressed="false" data-pack="slang"><span aria-hidden="true">💼</span> Corporate slang</button>
+              </div>
+            </div>
+            <div class="field">
+              <span id="gen-level-label">Difficulty</span>
+              <div class="segmented cols" style="--n: 4" role="radiogroup" aria-labelledby="gen-level-label" data-gen="level">
+                <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="easy">Easy</button>
+                <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="medium">Medium</button>
+                <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="hard">Hard</button>
+                <button type="button" role="radio" aria-checked="true" class="on" data-value="any">Any</button>
+              </div>
+            </div>
+            <p class="gen-count" data-gen="count"></p>
+          </div>
+        </div>
+
+        <div class="gen-score">
+          <label class="gen-check"><input type="checkbox" data-gen="score" /> Keep score</label>
+          <div class="gen-teams" data-gen="teams" hidden>
+            <div class="gen-team" data-team="0">
+              <label class="gen-name">
+                <span class="gen-sr">Name of team 1</span>
+                <input type="text" value="Team 1" maxlength="20" autocomplete="off" spellcheck="false" enterkeyhint="done" />
+                <span class="gen-pencil" aria-hidden="true">✎</span>
+              </label>
+              <span class="gen-points"><span data-points>0</span><span class="gen-sr"> points</span></span>
+              <span class="gen-turn">Their turn</span>
+              <div class="gen-adjust">
+                <button type="button" class="small" data-adjust="-1">−1</button>
+                <button type="button" class="small" data-adjust="1">+1</button>
+              </div>
+            </div>
+            <div class="gen-team" data-team="1">
+              <label class="gen-name">
+                <span class="gen-sr">Name of team 2</span>
+                <input type="text" value="Team 2" maxlength="20" autocomplete="off" spellcheck="false" enterkeyhint="done" />
+                <span class="gen-pencil" aria-hidden="true">✎</span>
+              </label>
+              <span class="gen-points"><span data-points>0</span><span class="gen-sr"> points</span></span>
+              <span class="gen-turn">Their turn</span>
+              <div class="gen-adjust">
+                <button type="button" class="small" data-adjust="-1">−1</button>
+                <button type="button" class="small" data-adjust="1">+1</button>
+              </div>
+            </div>
+            <div class="gen-score-tools">
+              <button type="button" class="small" data-gen="pass">Switch turns</button>
+              <button type="button" class="small" data-gen="reset">Reset scores</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="gen-recent" data-gen="recent-row" hidden>
+          <span class="gen-recent-label" id="gen-recent-label">Recent</span>
+          <ul aria-labelledby="gen-recent-label" data-gen="recent"></ul>
+        </div>
+
+        <div class="gen-sr" aria-live="polite" data-gen="live"></div>
+      </section>
+
+      <div class="cta-row gen-play">
+        <a class="cta" href="/?packs=everyday,animals,food,desi,actions,places,nature,sports,fantasy&amp;difficulty=hard" data-gen="play">Play these packs online</a>
+        <p>Drawdle opens with these packs ready for your room. Everyone plays on their own phone.</p>
+      </div>
+
+      <section class="card">
+        <h2>Play Pictionary at home with this generator</h2>
+        <p class="lede">All you need is this page on one phone, some paper and two teams.</p>
+        <ol class="steps">
+          <li>
+            <strong>Make two teams.</strong> Tick Keep score and type in your team names. The team
+            marked “Their turn” goes first.
+          </li>
+          <li>
+            <strong>Hide the word.</strong> Tick Hide the word and pass the phone to the first
+            drawer. They press New word, then press and hold the card to peek. Everyone else just
+            sees a covered card.
+          </li>
+          <li>
+            <strong>Set the timer.</strong> A minute suits most words: try 30 seconds for a quick
+            round and 90 for Hard words. The clock turns pink for the last 10 seconds, and when
+            time runs out it sounds, the card flashes and the word is shown.
+          </li>
+          <li>
+            <strong>Draw, don't write.</strong> The drawer sketches on paper while their team
+            shouts guesses. No letters, no numbers, no talking. Stuck? Skip swaps the word, but the
+            clock keeps running.
+          </li>
+          <li>
+            <strong>Press Got it! when they say it.</strong> The team scores 1 point for an Easy
+            word, 2 for Medium and 3 for Hard, and the turn passes to the other team. Out of time?
+            Press Got it or Missed. First team to 20 wins.
+          </li>
+        </ol>
+      </section>
+
+      <section class="card">
+        <h2>What makes a good Pictionary word</h2>
+        <p class="lede">The best words are ones everybody knows and nobody can say without drawing.</p>
+        <ul>
+          <li>
+            <strong>You can picture it.</strong> Things, animals, places and actions work: a
+            giraffe, an umbrella, tug of war. Ideas like “gravity” or “procrastinate” have no shape,
+            which is exactly what makes them Hard.
+          </li>
+          <li>
+            <strong>The room knows it.</strong> “Rangoli” and “power cut” land at an Indian family
+            evening; “scrum master” lands at the office. Switch on the packs your group will get.
+          </li>
+          <li>
+            <strong>It can't be written.</strong> If the only way to draw a word is to spell it, it
+            isn't a Pictionary word.
+          </li>
+          <li>
+            <strong>Two pictures beat one.</strong> “Hot dog” and “elephant in the room” make the
+            drawer put two things together, and the wrong guesses on the way are half the fun.
+          </li>
+        </ul>
+        <p>
+          That's why every word here is rated by how it draws rather than how rare it is: Easy
+          words take a few strokes, Medium ones need a second object or a little scene, and Hard
+          ones are ideas you have to act out on paper.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Pictionary word lists</h2>
+        <p>Rather see every word at once? These pages list them by theme, age and occasion.</p>
+        <ul>
+          <li><a href="/pictionary-words">All Pictionary words</a> ({{count:all}}), theme by theme with Easy, Medium and Hard marked.</li>
+          <li><a href="/easy-pictionary-words">Easy words</a> ({{count:easy}}) that anyone can draw in a few strokes.</li>
+          <li><a href="/hard-pictionary-words">Hard words</a> ({{count:hard}}), with tricks for drawing the impossible ones.</li>
+          <li><a href="/pictionary-words-for-kids">Words for kids</a> ({{count:kids}}), checked for children and sorted by age.</li>
+          <li><a href="/office-pictionary-words">Office words</a> ({{count:office}}), from staplers to corporate slang.</li>
+          <li><a href="/indian-pictionary-words">Indian words</a> ({{count:desi}}): food, festivals, cricket and Bollywood.</li>
+          <li><a href="/skribbl-custom-words">skribbl custom words</a>: build a list to paste into skribbl.io.</li>
+        </ul>
+      </section>
+
+      <section class="card faq">
+        <h2>Questions</h2>
+        <details>
+          <summary>How does the generator pick words?</summary>
+          <p>
+            At random, from the {{count:all}} words in Drawdle's 13 themes, filtered by the packs and
+            difficulty you choose. No word comes up twice until every word in your mix has had its
+            turn; then they are shuffled and start again. The words come with the page, so it keeps
+            working if your connection drops.
+          </p>
+        </details>
+        <details>
+          <summary>Can the guessers see the word?</summary>
+          <p>
+            Not with Hide the word ticked. New words arrive covered, and the drawer presses and holds
+            the card to peek, or uses the Show word button. When time runs out the word is shown to
+            everyone.
+          </p>
+        </details>
+        <details>
+          <summary>How long should a Pictionary turn be?</summary>
+          <p>
+            A minute is the classic. Pick 30 seconds for a fast round of Easy words and 90 for Hard
+            ones. On most phones the screen stays on while the timer runs.
+          </p>
+        </details>
+        <details>
+          <summary>How does the scoring work?</summary>
+          <p>
+            Tick Keep score for two teams. Got it! gives the team whose turn it is 1 point for an Easy
+            word, 2 for Medium and 3 for Hard, then passes the turn. Use +1 and −1 to fix a mistake.
+          </p>
+        </details>
+        <details>
+          <summary>Can we play these words online instead?</summary>
+          <p>
+            Yes. Play these packs online opens Drawdle with your packs switched on. Make a room, send
+            the link, and everyone draws and guesses on their own phone while the game keeps time and
+            score.
+          </p>
+        </details>
+      </section>
+
+      <section class="closing">
+        <p>Out of paper? Draw on your phones instead.</p>
+        <a class="cta" href="/">Start a game online</a>
+      </section>
+    </main>
+    <!--site:footer-->
+    <script type="module" src="/src/generator.ts"></script>
+  </body>
+</html>

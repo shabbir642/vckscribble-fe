@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import type { ChatMessage, Player, Reaction, Stroke } from '../generated/contract';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import type { ChatMessage, GameSummary, Player, Reaction, Stroke } from '../generated/contract';
 import type { RoomSnapshot } from '../hooks/useRoom';
 import { Avatar } from './Avatar';
 import { Board } from './Board';
 import { Chat } from './Chat';
-import { Confetti } from './Confetti';
+import { Finale, type GameResults } from './Finale';
 import { InviteLink } from './InviteLink';
-import { Podium, rankPlayers } from './Podium';
 import { Reactions } from './Reactions';
 import { Scores } from './Scores';
+import { ShareSheet } from './ShareSheet';
 import { WordPicker } from './WordPicker';
 
 interface Props {
@@ -20,7 +20,12 @@ interface Props {
   assignedWord: string | null;
   secondsLeft: number;
   closeHint: string | null;
+  /** Set once the game's final scores are in (the final scoreboard, then the end). */
   finalScores: Player[] | null;
+  /** The server's summary of the game just ended. */
+  summary: GameSummary | null;
+  /** The last game's results, kept (by App, through the lobby) until the next summary. */
+  results: GameResults | null;
   busy: boolean;
   onChoose: (id: number) => void;
   onCustom: (text: string) => void;
@@ -67,6 +72,12 @@ function Words({ text, masked = false }: { text: string; masked?: boolean }) {
 
 const ranked = (players: Player[]) => [...players].sort((a, b) => b.score - a.score);
 
+/** Messages newer than `id` (all of them if it has scrolled out of the kept 200). */
+function countAfter(messages: ChatMessage[], id: string | null): number {
+  const i = id === null ? -1 : messages.findIndex((m) => m.id === id);
+  return i === -1 ? messages.length : messages.length - 1 - i;
+}
+
 /**
  * A ranked list on the canvas: past five players, two columns read top to
  * bottom (1–5, then 6–10), so a full room fits on the drawing without scrolling.
@@ -105,6 +116,7 @@ export function Game(p: Props) {
   // Phones: the strip's buttons fold into a menu, leaving the width to the word.
   const [menuOpen, setMenuOpen] = useState(false);
   const stripRef = useRef<HTMLDivElement | null>(null);
+  const menuToggle = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     if (!menuOpen) return;
     const away = (e: PointerEvent) => {
@@ -120,7 +132,89 @@ export function Game(p: Props) {
   }, [menuOpen]);
 
   const canDraw = isDrawer && phase === 'drawing' && p.online;
-  const canGuess = !isDrawer && phase === 'drawing' && p.online;
+  // After the game the box is plain chat, as the server treats it outside a
+  // live turn: the "gg" and "one more?" that get the next game going.
+  const canGuess = p.online && (phase === 'drawing' ? !isDrawer : phase === 'finished');
+
+  /* -------------------------------------------------------------- results */
+  const { results } = p;
+  // The results open with every game's end, whatever they were left as last
+  // time, and over a closed menu.
+  const [finaleOpen, setFinaleOpen] = useState(true);
+  const [seenPhase, setSeenPhase] = useState(phase);
+  if (seenPhase !== phase) {
+    setSeenPhase(phase);
+    if (phase === 'finished') {
+      setFinaleOpen(true);
+      setMenuOpen(false);
+    }
+  }
+  // So do another game's results arriving while these are up (a page that
+  // slept through a whole game comes back to its end): opened, and afresh, not
+  // calm or minimised as these were. Not a first summary, though: the results
+  // opened with the phase, and starting them over would replay the opening.
+  const summaryId = p.summary?.id ?? null;
+  const [seenSummary, setSeenSummary] = useState(summaryId);
+  const [finaleKey, setFinaleKey] = useState(0);
+  if (seenSummary !== summaryId) {
+    setSeenSummary(summaryId);
+    if (phase === 'finished' && seenSummary !== null && summaryId !== null) {
+      setFinaleOpen(true);
+      setMenuOpen(false);
+      setFinaleKey((k) => k + 1);
+    }
+  }
+  const finaleShown = phase === 'finished' && finaleOpen;
+  /** The last game's share sheet, opened from the strip during the next game. */
+  const [lastSheet, setLastSheet] = useState(false);
+  const lastShareable =
+    phase !== 'finished' && results !== null && results.summary.players.some((x) => x.id === room.youId);
+
+  // It goes when that game's results are replaced, when this game ends, and
+  // when it's your turn to draw (it would hide the word choice).
+  const resultsId = results?.summary.id;
+  useEffect(() => setLastSheet(false), [resultsId]);
+  useEffect(() => {
+    if (phase === 'finished' || p.wordOptions) setLastSheet(false);
+  }, [phase, p.wordOptions]);
+
+  // Everything under a dialog is out of reach: no Tab into it, no screen
+  // reader wandering behind. Only the game: the toasts must still be heard.
+  const gameRef = useRef<HTMLDivElement | null>(null);
+  const blocked = finaleShown || (lastSheet && lastShareable);
+  useEffect(() => {
+    const el = gameRef.current;
+    if (!el) return;
+    el.inert = blocked;
+    return () => {
+      el.inert = false;
+    };
+  }, [blocked]);
+
+  // The chat badge: messages that arrived while the results covered the chat.
+  const lastMessageId = p.messages[p.messages.length - 1]?.id ?? null;
+  const readUpTo = useRef(lastMessageId);
+  useEffect(() => {
+    if (!finaleShown) readUpTo.current = lastMessageId;
+  });
+  const unread = finaleShown ? countAfter(p.messages, readUpTo.current) : 0;
+
+  // Off to the chat. With a keyboard, straight into the box; on a touch
+  // screen that would throw up the keyboard, so onto the way back instead.
+  const resultsButton = useRef<HTMLButtonElement | null>(null);
+  const focusOnClose = useRef(false);
+  const minimise = useCallback(() => {
+    focusOnClose.current = true;
+    setFinaleOpen(false);
+  }, []);
+  useEffect(() => {
+    if (finaleShown || !focusOnClose.current) return;
+    focusOnClose.current = false;
+    const typing = window.matchMedia?.('(pointer: fine)').matches
+      ? gameRef.current?.querySelector<HTMLInputElement>('.chat input:not(:disabled)')
+      : null;
+    (typing ?? resultsButton.current)?.focus({ preventScroll: true });
+  }, [finaleShown]);
 
   // Scores as the turn began, so the reveal can show what each player won.
   const turnStart = useRef(new Map<string, number>());
@@ -137,11 +231,13 @@ export function Game(p: Props) {
     ? 'Reconnecting…'
     : canDraw
       ? 'No chat while drawing'
-      : youGuessed
-        ? 'Chat with the solvers'
-        : phase === 'drawing'
-          ? 'Type your guess…'
-          : 'Guessing starts soon';
+      : phase === 'finished'
+        ? 'Say gg, or ask for a rematch'
+        : youGuessed
+          ? 'Chat with the solvers'
+          : phase === 'drawing'
+            ? 'Type your guess…'
+            : 'Guessing starts soon';
 
   /* ---------------------------------------------------------- word strip */
   let center: ReactNode = null;
@@ -184,7 +280,20 @@ export function Game(p: Props) {
       </div>
     );
   } else if (phase === 'finished') {
-    center = <div className="hint-label">Game over</div>;
+    // While the results are minimised, the way back to them.
+    center = finaleShown ? (
+      <div className="hint-label">Game over</div>
+    ) : (
+      <button
+        type="button"
+        ref={resultsButton}
+        className="small results-open"
+        onClick={() => setFinaleOpen(true)}
+        aria-label="Show the results"
+      >
+        <span aria-hidden="true">🏆</span> Results
+      </button>
+    );
   }
 
   const timed = phase === 'drawing' || phase === 'selecting';
@@ -253,10 +362,13 @@ export function Game(p: Props) {
       </div>
     );
   } else if (phase === 'scoreboard') {
+    // The server says which scoreboard is the last one (its final scores). The
+    // round number can't: it has already moved on before any other scoreboard.
+    const last = p.finalScores !== null;
     overlay = (
       <div className="overlay">
         <div className="overlay-body">
-          <h2>Scores so far</h2>
+          <h2>{last ? 'Final scores' : 'Scores so far'}</h2>
           <ol {...listProps(room.players.length)}>
             {ranked(room.players).map((x, i) => (
               <li key={x.id}>
@@ -266,34 +378,10 @@ export function Game(p: Props) {
               </li>
             ))}
           </ol>
-          <p className="muted">
-            Round {room.round.round} of {room.round.totalRounds} is next
-          </p>
-        </div>
-      </div>
-    );
-  } else if (phase === 'finished' && p.finalScores) {
-    const order = rankPlayers(p.finalScores);
-    const champs = order.filter((x) => x.rank === 1).map((x) => x.player.name);
-    overlay = (
-      <div className="overlay finale">
-        <Confetti />
-        <div className="overlay-body">
-          <div className="winner-banner">
-            {champs.length > 1 ? `It’s a tie: ${champs.join(' & ')}!` : `${champs[0] ?? 'Nobody'} wins!`}
-          </div>
-          <Podium players={p.finalScores} youId={room.youId} />
-          {p.isHost ? (
-            <div className="row" style={{ justifyContent: 'center' }}>
-              <button className="primary big" onClick={p.onPlayAgain} disabled={p.busy}>
-                Play again
-              </button>
-              <button className="big" onClick={p.onRestart} disabled={p.busy}>
-                Back to lobby
-              </button>
-            </div>
-          ) : (
-            <p className="muted">Waiting for the host to start another game…</p>
+          {!last && (
+            <p className="muted">
+              Round {room.round.round} of {room.round.totalRounds} is next
+            </p>
           )}
         </div>
       </div>
@@ -301,83 +389,130 @@ export function Game(p: Props) {
   }
 
   return (
-    // data-* name the screen for automated checks (and devtools); no styling.
-    <div className="game" data-phase={phase} data-role={isDrawer ? 'drawer' : 'guesser'}>
-      <div className={`word-strip ${menuOpen ? 'menu-open' : ''}`} ref={stripRef}>
-        <div className="left">
-          <div
-            className={`clock ${hurry ? 'hurry' : ''} ${timed ? '' : 'idle'}`}
-            aria-label={timed ? `${p.secondsLeft} seconds left` : 'Paused'}
-          >
-            {timed ? p.secondsLeft : '⏸'}
-          </div>
-          {/* "Round 1 of 3"; on a phone, "1/3". */}
-          <span className="round">
-            <span className="round-word">Round </span>
-            {Math.max(1, room.round.round)}
-            <span className="round-of"> of </span>
-            <span className="round-slash" aria-hidden="true">/</span>
-            {room.round.totalRounds}
-          </span>
-        </div>
-        <div className="center">{center}</div>
-        <button
-          className="small icon menu-toggle"
-          onClick={() => setMenuOpen((o) => !o)}
-          aria-expanded={menuOpen}
-          aria-label="More: invite, report, leave"
-        >
-          ⋯
-        </button>
-        <div className="right">
-          {phase === 'drawing' && !isDrawer && (
-            <button
-              className="small"
-              onClick={() => {
-                setMenuOpen(false);
-                p.onReport();
-              }}
-              title="Report this word as offensive"
-              aria-label="Report this word"
+    <>
+      {/* data-* name the screen for automated checks (and devtools); no styling. */}
+      <div className="game" ref={gameRef} data-phase={phase} data-role={isDrawer ? 'drawer' : 'guesser'}>
+        <div className={`word-strip ${menuOpen ? 'menu-open' : ''}`} ref={stripRef}>
+          <div className="left">
+            <div
+              className={`clock ${hurry ? 'hurry' : ''} ${timed ? '' : 'idle'}`}
+              aria-label={timed ? `${p.secondsLeft} seconds left` : 'Paused'}
             >
-              🚩 <span className="btn-label">Report</span>
-            </button>
-          )}
-          {p.isHost && phase !== 'finished' && <RestartButton onRestart={p.onRestart} />}
-          <InviteLink roomCode={room.roomCode} compact />
-          <button className="small" onClick={p.onLeave} aria-label="Leave the game">
-            🚪 <span className="btn-label">Leave</span>
+              {timed ? p.secondsLeft : '⏸'}
+            </div>
+            {/* "Round 1 of 3"; on a phone, "1/3". */}
+            <span className="round">
+              <span className="round-word">Round </span>
+              {Math.max(1, room.round.round)}
+              <span className="round-of"> of </span>
+              <span className="round-slash" aria-hidden="true">/</span>
+              {room.round.totalRounds}
+            </span>
+          </div>
+          <div className="center">{center}</div>
+          <button
+            ref={menuToggle}
+            className="small icon menu-toggle"
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-expanded={menuOpen}
+            aria-label="More: invite, report, leave"
+          >
+            ⋯
           </button>
+          <div className="right">
+            {phase === 'drawing' && !isDrawer && (
+              <button
+                className="small"
+                onClick={() => {
+                  setMenuOpen(false);
+                  p.onReport();
+                }}
+                title="Report this word as offensive"
+                aria-label="Report this word"
+              >
+                🚩 <span className="btn-label">Report</span>
+              </button>
+            )}
+            {p.isHost && phase !== 'finished' && <RestartButton onRestart={p.onRestart} />}
+            {lastShareable && (
+              <button
+                className="small"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setLastSheet(true);
+                }}
+                aria-label="Share the last game’s results"
+              >
+                🏆 <span className="btn-label">Share last game</span>
+              </button>
+            )}
+            <InviteLink roomCode={room.roomCode} compact />
+            <button className="small" onClick={p.onLeave} aria-label="Leave the game">
+              🚪 <span className="btn-label">Leave</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="play">
+          <Scores
+            players={room.players}
+            drawerId={room.round.drawerId}
+            guessed={room.round.guessedPlayerIds}
+            youId={room.youId}
+            isHost={p.isHost}
+            onKick={p.onKick}
+          />
+          <div className="stage">
+            <Board
+              canDraw={canDraw}
+              onDrawStart={p.onDrawStart}
+              onDrawAppend={p.onDrawAppend}
+              onUndo={p.onUndo}
+              onClear={p.onClear}
+              overlay={overlay}
+            />
+          </div>
+          <Chat
+            messages={p.messages}
+            canGuess={canGuess}
+            placeholder={placeholder}
+            closeHint={p.closeHint}
+            onGuess={p.onGuess}
+            title={phase === 'finished' ? 'Chat' : 'Guesses'}
+          />
         </div>
       </div>
 
-      <div className="play">
-        <Scores
-          players={room.players}
-          drawerId={room.round.drawerId}
-          guessed={room.round.guessedPlayerIds}
-          youId={room.youId}
+      {phase === 'finished' && (
+        <Finale
+          key={finaleKey}
+          room={room}
+          summary={p.summary}
+          results={results}
+          finalScores={p.finalScores}
           isHost={p.isHost}
-          onKick={p.onKick}
+          busy={p.busy}
+          open={finaleOpen}
+          unread={unread}
+          onMinimise={minimise}
+          onPlayAgain={p.onPlayAgain}
+          onRestart={p.onRestart}
         />
-        <div className="stage">
-          <Board
-            canDraw={canDraw}
-            onDrawStart={p.onDrawStart}
-            onDrawAppend={p.onDrawAppend}
-            onUndo={p.onUndo}
-            onClear={p.onClear}
-            overlay={overlay}
-          />
-        </div>
-        <Chat
-          messages={p.messages}
-          canGuess={canGuess}
-          placeholder={placeholder}
-          closeHint={p.closeHint}
-          onGuess={p.onGuess}
+      )}
+      {lastSheet && lastShareable && results && (
+        <ShareSheet
+          key={results.summary.id}
+          summary={results.summary}
+          youId={room.youId}
+          roomCode={room.roomCode}
+          file={results.file}
+          card={results.card}
+          title="Share last game"
+          onClose={() => setLastSheet(false)}
+          // On a phone, "Share last game" is folded away in the closed menu by then.
+          returnFocus={() => menuToggle.current}
         />
-      </div>
-    </div>
+      )}
+    </>
   );
 }

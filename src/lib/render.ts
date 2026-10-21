@@ -1,12 +1,15 @@
 import { COORD_SCALE, type Stroke } from '../generated/contract';
 
+/** Any 2D surface a stroke log can be painted on, on screen or off it. */
+export type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+
 /**
  * Strokes carry flat, quantized points — [x0, y0, x1, y1, ...] on a
  * 0..COORD_SCALE grid. Everything here converts to the pixel size of the
  * target surface, so the same log renders correctly at any canvas size.
  */
 export function drawStroke(
-  ctx: CanvasRenderingContext2D,
+  ctx: Ctx2D,
   stroke: Stroke,
   w: number,
   h: number,
@@ -56,6 +59,77 @@ export function drawStroke(
 }
 
 /**
+ * How much work replaying a log for a picture may take in all before it is
+ * given up. Each fill reads and writes the whole bitmap: a few take tens of
+ * milliseconds on a laptop (several times that on a cheap phone), and the
+ * hundreds a script could send would take minutes. The server already keeps
+ * fill-heavy canvases out of the summary; this is the backstop.
+ */
+export const REPLAY_BUDGET_MS = 8000;
+
+/**
+ * A replay works in slices of about this long, then hands the page back, so
+ * the results screen stays responsive while a drawing with fills replays.
+ */
+const REPLAY_SLICE_MS = 24;
+
+const yieldToPage = () => new Promise<void>((next) => setTimeout(next, 0));
+
+/**
+ * A whole log replayed onto a detached canvas of exactly w×h pixels, for
+ * pictures made after the fact: the results screen and the share card.
+ *
+ * Its own canvas, because fills flood against whatever is already painted and
+ * the eraser cuts through everything beneath it, so a log replayed straight
+ * onto a card would flood or erase the card. It stays transparent like the
+ * live canvas, whose white comes from the page: a white base would change
+ * which antialiased edges a fill leaks through. Composite it onto paper with
+ * drawImage, and keep it 4:3, since x and y scale separately.
+ *
+ * Replayed in slices (see REPLAY_SLICE_MS). Only time spent drawing counts
+ * towards `budgetMs`, not time the page spent elsewhere (a tab in the
+ * background runs timers slowly); past it the replay is given up and there is
+ * no picture (null).
+ */
+export async function renderDrawing(
+  strokes: readonly Stroke[],
+  w = 1200,
+  h = 900,
+  budgetMs = REPLAY_BUDGET_MS,
+): Promise<HTMLCanvasElement | null> {
+  // Fills use the width as their row stride, so it must be the bitmap's own.
+  const width = Math.max(1, Math.round(w));
+  const height = Math.max(1, Math.round(h));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  // A fresh context: transparent, with the identity transform fills need (they
+  // write raw pixels). Fills also read pixels back, which this keeps cheap.
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  // No context means the browser is out of canvas memory: a blank picture
+  // beats a broken results screen.
+  if (!ctx) return canvas;
+  let busy = 0;
+  let slice = performance.now();
+  for (const s of strokes) {
+    drawStroke(ctx, s, width, height);
+    const now = performance.now();
+    if (busy + (now - slice) > budgetMs) {
+      // iOS keeps a canvas's memory until it is shrunk.
+      canvas.width = 0;
+      canvas.height = 0;
+      return null;
+    }
+    if (now - slice > REPLAY_SLICE_MS) {
+      busy += now - slice;
+      await yieldToPage();
+      slice = performance.now();
+    }
+  }
+  return canvas;
+}
+
+/**
  * Two rows of fifteen: a dark and a light shade of every marker colour, so
  * shading is one row away. Bright on purpose — this is a party game.
  */
@@ -92,7 +166,7 @@ const FILL_TOLERANCE = 110;
  * game, and the reason a gap in an outline "leaks".
  */
 function floodFill(
-  ctx: CanvasRenderingContext2D,
+  ctx: Ctx2D,
   x0: number,
   y0: number,
   w: number,
@@ -101,19 +175,21 @@ function floodFill(
 ): void {
   if (x0 < 0 || y0 < 0 || x0 >= w || y0 >= h) return;
 
+  const [fr, fg, fb] = hexToRgb(hex);
+  // Filling a region with the colour it already has would spin forever, since
+  // painted pixels would keep testing as "matching". The seed pixel alone
+  // says so: a repeated fill then costs a one-pixel read, not a whole bitmap.
+  const [pr = 0, pg = 0, pb = 0, pa = 0] = ctx.getImageData(x0, y0, 1, 1).data;
+  if (Math.abs(pr - fr) + Math.abs(pg - fg) + Math.abs(pb - fb) + Math.abs(pa - 255) <= 8) {
+    return;
+  }
+
   const img = ctx.getImageData(0, 0, w, h);
   const d = img.data;
   const at = (x: number, y: number) => (y * w + x) * 4;
 
   const seed = at(x0, y0);
   const sr = d[seed]!, sg = d[seed + 1]!, sb = d[seed + 2]!, sa = d[seed + 3]!;
-  const [fr, fg, fb] = hexToRgb(hex);
-
-  // Filling a region with the colour it already has would spin forever, since
-  // painted pixels would keep testing as "matching".
-  if (Math.abs(sr - fr) + Math.abs(sg - fg) + Math.abs(sb - fb) + Math.abs(sa - 255) <= 8) {
-    return;
-  }
 
   const matches = (i: number) =>
     Math.abs(d[i]! - sr) +
