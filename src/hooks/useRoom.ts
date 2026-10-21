@@ -10,6 +10,8 @@ import type {
   RoundPhase,
   RoundState,
   Stroke,
+  Team,
+  TeamId,
   WordChoice,
 } from '../generated/contract';
 import { connectFor, onShardOf, routeTo, socket } from '../lib/socket';
@@ -33,6 +35,11 @@ export interface RoomSnapshot {
   players: Player[];
   settings: RoomSettings;
   round: RoundState;
+  /**
+   * A team game's teams (names and scores), in TEAMS order; empty when
+   * everyone plays for themselves. Who is on which is each player's teamId.
+   */
+  teams: Team[];
   youId: string;
   /** The custom word list: only ever present for the host. */
   hostWords: string[] | null;
@@ -81,6 +88,12 @@ export interface UseRoom {
   start: () => Promise<void>;
   /** Host: stop the game, or leave the podium, and go back to the lobby. */
   restart: () => Promise<void>;
+  /** Team game, lobby: move yourself to another of the game's teams. */
+  joinTeam: (teamId: TeamId) => Promise<Result>;
+  /** Host, team game, lobby: deal everyone into even teams at random. */
+  shuffleTeams: () => Promise<Result>;
+  /** The host or a member, lobby: rename a team (an empty name restores its default). */
+  renameTeam: (teamId: TeamId, name: string) => Promise<Result>;
   chooseWord: (wordId: number) => Promise<void>;
   customWord: (text: string) => Promise<void>;
   sendGuess: (text: string) => void;
@@ -255,6 +268,7 @@ export function useRoom(): UseRoom {
       players: Player[];
       settings: RoomSettings;
       round: RoundState;
+      teams: Team[];
       you: { playerId: string };
       hostWords?: string[];
     }) => {
@@ -264,12 +278,17 @@ export function useRoom(): UseRoom {
         players: p.players,
         settings: p.settings,
         round: p.round,
+        // Every screen reads this list, so it is never left undefined, even
+        // by a server from before teams.
+        teams: p.teams ?? [],
         youId: p.you.playerId,
         hostWords: p.hostWords ?? null,
       });
     };
     const onPlayers = (p: { players: Player[] }) =>
       setRoom((r) => (r ? { ...r, players: p.players } : r));
+    const onTeams = (p: { teams: Team[] }) =>
+      setRoom((r) => (r ? { ...r, teams: p.teams } : r));
     const onRound = (p: RoundState) => {
       enterPhase(p.phase);
       // A new turn starts with fresh votes.
@@ -364,6 +383,7 @@ export function useRoom(): UseRoom {
     socket.on('disconnect', onDisconnect);
     socket.on('room:state', onState);
     socket.on('room:players', onPlayers);
+    socket.on('room:teams', onTeams);
     socket.on('round:state', onRound);
     socket.on('chat:message', onMessage);
     socket.on('word:options', onOptions);
@@ -391,6 +411,7 @@ export function useRoom(): UseRoom {
       socket.off('disconnect', onDisconnect);
       socket.off('room:state', onState);
       socket.off('room:players', onPlayers);
+      socket.off('room:teams', onTeams);
       socket.off('round:state', onRound);
       socket.off('chat:message', onMessage);
       socket.off('word:options', onOptions);
@@ -538,6 +559,22 @@ export function useRoom(): UseRoom {
     await request((ack) => socket.emit('room:restart', {}, ack));
   }, [request]);
 
+  const joinTeam = useCallback(
+    (teamId: TeamId) => request((ack) => socket.emit('team:join', { teamId }, ack)),
+    [request],
+  );
+
+  const shuffleTeams = useCallback(
+    () => request((ack) => socket.emit('team:shuffle', {}, ack)),
+    [request],
+  );
+
+  const renameTeam = useCallback(
+    (teamId: TeamId, name: string) =>
+      request((ack) => socket.emit('team:rename', { teamId, name }, ack)),
+    [request],
+  );
+
   const chooseWord = useCallback(
     async (wordId: number) => {
       const r = await request((ack) => socket.emit('word:choose', { wordId }, ack));
@@ -630,6 +667,9 @@ export function useRoom(): UseRoom {
     setCustomWords,
     start,
     restart,
+    joinTeam,
+    shuffleTeams,
+    renameTeam,
     chooseWord,
     customWord,
     sendGuess,

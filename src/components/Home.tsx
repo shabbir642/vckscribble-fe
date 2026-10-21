@@ -24,6 +24,9 @@ function describe(p: RoomPreview): string {
   return `${who}, game in progress (you can jump in)`;
 }
 
+/** How often a full room is looked at again, so Join unlocks once there is space. */
+const REPEEK_MS = 5000;
+
 /**
  * Two faces, like skribbl:
  * - opened from an invite link: the room you are joining comes first, shown
@@ -68,11 +71,42 @@ export function Home({ busy, connected, onCreate, onJoin, onPeek, preset, onDrop
   const full = preview ? preview.players >= preview.maxPlayers : false;
   const inviting = Boolean(invite && !inviteDead);
 
+  // A full room can make space (the host raises the limit, someone leaves):
+  // keep looking while it is full, so Join unlocks by itself.
+  useEffect(() => {
+    if (!invite || !full || !connected || inviteDead) return;
+    let live = true;
+    let asking = false;
+    const t = setInterval(() => {
+      if (asking) return;
+      asking = true;
+      void onPeek(invite).then((r) => {
+        asking = false;
+        if (!live) return;
+        if (r.ok) setPreview(r);
+        // Only a room that has gone ends the wait; a hiccup just tries again.
+        else if (r.code === 'ROOM_NOT_FOUND') {
+          setInviteDead(true);
+          setUrlRoom(null);
+        }
+      });
+    }, REPEEK_MS);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+  }, [invite, full, connected, inviteDead, onPeek]);
+
   const join = async (target: string) => {
     const r = await onJoin(target, clean, avatar);
     if (!r.ok && r.code === 'ROOM_NOT_FOUND' && target === invite) {
       setInviteDead(true);
       setUrlRoom(null);
+    }
+    // It filled up since we looked: show that, and wait for a seat.
+    if (!r.ok && r.code === 'ROOM_FULL' && target === invite) {
+      const again = await onPeek(target);
+      if (again.ok) setPreview(again);
     }
   };
 
@@ -85,8 +119,10 @@ export function Home({ busy, connected, onCreate, onJoin, onPeek, preset, onDrop
 
   const submit = () => {
     if (!ready) return;
-    if (inviting) void join(invite!);
-    else onCreate(clean, avatar);
+    // Enter does what the button does: nothing while the room is full.
+    if (inviting) {
+      if (!full) void join(invite!);
+    } else onCreate(clean, avatar);
   };
 
   return (
@@ -99,12 +135,20 @@ export function Home({ busy, connected, onCreate, onJoin, onPeek, preset, onDrop
       <div className="card">
         {inviting && (
           <div className="invite-head">
-            <h2>{preview?.hostName ? `${preview.hostName} invited you to play` : 'You’re invited to play'}</h2>
+            <h2>
+              {preview?.hostName ? `${preview.hostName} invited you to ` : 'You’re invited to '}
+              {preview?.mode === 'teams' ? 'a team game' : 'play'}
+            </h2>
             <div className="room-code">{invite}</div>
             <p className="muted">
               {preview ? describe(preview) : connected ? 'Looking up the room…' : 'Connecting…'}
             </p>
           </div>
+        )}
+        {inviting && full && (
+          <p className="notice" role="status">
+            This room is full. Ask {preview?.hostName ?? 'the host'} to make room.
+          </p>
         )}
         {inviteDead && (
           <p className="notice" role="status">
@@ -155,7 +199,7 @@ export function Home({ busy, connected, onCreate, onJoin, onPeek, preset, onDrop
               disabled={!ready || !preview || full}
               onClick={() => void join(invite!)}
             >
-              {full ? 'This room is full' : 'Join the game'}
+              {full ? 'Waiting for a free seat…' : 'Join the game'}
             </button>
             <p className="center" style={{ marginTop: 12 }}>
               <button className="link" onClick={dropInvite}>

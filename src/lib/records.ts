@@ -1,5 +1,5 @@
 import type { GameSummary } from '../generated/contract';
-import { FALLBACK_ID, formatSeconds } from './results';
+import { FALLBACK_ID, formatSeconds, teamOf, teamResults } from './results';
 
 /**
  * Your personal records, kept in this browser: a reason to come back ("Game 7
@@ -28,7 +28,10 @@ const SEEN_MAX = 20;
 const GAME_MILESTONES = [5, 10, 25, 50, 100];
 
 interface Stored extends Records {
-  /** Games that ran to the end. A best score needs one before it to beat. */
+  /**
+   * Games everyone played for themselves that ran to the end. A best score
+   * needs one before it to beat (team games set none).
+   */
   completed: number;
   seen: string[];
 }
@@ -125,6 +128,8 @@ export function recordLine(r: Records): string | null {
  * client's stand-in summary, a game you had no part in, one where nothing was
  * drawn, or a game already counted. A game that ended early adds to the games
  * played and nothing else: winning alone after everyone left is no win.
+ * A team game's win is your team's (with points), and its points are the
+ * team's too: they make no podium and no best score of yours.
  */
 export function recordGame(
   summary: GameSummary,
@@ -150,12 +155,18 @@ export function recordGame(
   };
   const milestones: Milestone[] = [];
   if (!summary.abandoned) {
+    const teamGame = teamResults(summary) !== null;
+    const team = teamOf(summary, youId);
     // A first place nobody scored in (0 to 0) is no win.
-    const won = you.rank === 1 && you.score > 0;
-    after.completed += 1;
+    const won = teamGame
+      ? team !== null && team.rank === 1 && team.score > 0
+      : you.rank === 1 && you.score > 0;
     if (won) after.wins += 1;
-    if (you.rank <= 3 && you.score > 0) after.podiums += 1;
-    after.bestScore = Math.max(before.bestScore, you.score);
+    if (!teamGame) {
+      after.completed += 1;
+      if (you.rank <= 3 && you.score > 0) after.podiums += 1;
+      after.bestScore = Math.max(before.bestScore, you.score);
+    }
     after.guessed += you.guessed;
     after.drawings += you.drew;
     if (you.fastestMs !== null) {
@@ -165,7 +176,7 @@ export function recordGame(
 
     if (won && before.wins === 0) milestones.push({ id: 'first-win', label: 'First win!' });
     // Not on the very first game: beating nothing is no personal best.
-    if (before.completed > 0 && you.score > before.bestScore) {
+    if (!teamGame && before.completed > 0 && you.score > before.bestScore) {
       milestones.push({ id: 'best-score', label: `New best score: ${you.score}` });
     }
     // Faster by enough to show: 2.1s after 2.1s would read as no change.

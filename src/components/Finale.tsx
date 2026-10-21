@@ -9,11 +9,30 @@ import {
   type CSSProperties,
 } from 'react';
 import { createPortal } from 'react-dom';
-import type { BestDrawing, GameSummary, Player, RoomSettings, SummaryPlayer } from '../generated/contract';
+import {
+  TEAMS,
+  type BestDrawing,
+  type GameSummary,
+  type Player,
+  type RoomSettings,
+  type SummaryPlayer,
+  type TeamResult,
+} from '../generated/contract';
 import type { RoomSnapshot } from '../hooks/useRoom';
 import { recordGame, recordLine } from '../lib/records';
 import { renderDrawing } from '../lib/render';
-import { AWARDS, formatSeconds, ordinal, shareText, summaryFromPlayers } from '../lib/results';
+import {
+  AWARDS,
+  formatSeconds,
+  ordinal,
+  shareText,
+  shortLine,
+  shortTeams,
+  summaryFromPlayers,
+  teamLook,
+  teamOf,
+  teamResults,
+} from '../lib/results';
 import { GREETINGS, festiveFor, type Festive } from '../lib/season';
 import { roomInviteUrl } from '../lib/session';
 import { canShareFiles, isPhone, shareFile } from '../lib/share';
@@ -21,8 +40,9 @@ import { sfx } from '../lib/sound';
 import { Avatar } from './Avatar';
 import { Confetti } from './Confetti';
 import { InviteLink } from './InviteLink';
-import { Podium, onPodium, points, type Standing } from './Podium';
+import { Podium, TeamPodium, onPodium, points, type Standing, type TeamStanding } from './Podium';
 import { ShareSheet, makeCardFile, shareMode, trapTab } from './ShareSheet';
+import { readiness, teamViews, versus } from './Teams';
 
 /** The opening: banner and podium at once, the blocks rising, then the awards (index.css .finale). */
 const SEQUENCE_MS = 1800;
@@ -300,7 +320,23 @@ function bannerText(standings: Standing[], abandoned: boolean): string {
   return top.length > 1 ? `It’s a tie: ${names}!` : `${names} wins!`;
 }
 
-function placeLine(me: SummaryPlayer, summary: GameSummary): string {
+/** "Team Mango wins!", "Team Mango and Team Kiwi tie!"; for a game cut short, who was ahead. */
+function teamBannerText(teams: TeamStanding[], abandoned: boolean): string {
+  const top = teams.filter((t) => t.rank === 1 && t.score > 0).map((t) => t.name);
+  const last = top[top.length - 1];
+  if (last === undefined) return 'Nobody scored this time';
+  const names = top.length > 1 ? `${top.slice(0, -1).join(', ')} and ${last}` : last;
+  if (abandoned) return top.length > 1 ? `${names} were level` : `${names} was ahead`;
+  return top.length > 1 ? `${names} tie!` : `${names} wins!`;
+}
+
+/**
+ * Where you came. In a team game, where your team came: the points were the
+ * team's, and a winning team's quiet players won too.
+ */
+function placeLine(me: SummaryPlayer, summary: GameSummary): string | null {
+  const teams = teamResults(summary);
+  if (teams) return teamPlaceLine(teamOf(summary, me.id), teams, summary.abandoned);
   if (me.score <= 0) return summary.abandoned ? 'No points before the game ended' : 'No points this time';
   if (summary.abandoned) return `You were ${ordinal(me.rank)} when the game ended`;
   if (me.rank === 1) {
@@ -308,6 +344,51 @@ function placeLine(me: SummaryPlayer, summary: GameSummary): string {
     return tied ? 'You tied for first!' : 'You won!';
   }
   return `You came ${ordinal(me.rank)} of ${summary.players.length}`;
+}
+
+function teamPlaceLine(team: TeamResult | null, teams: TeamResult[], abandoned: boolean): string | null {
+  if (!team) return null;
+  if (team.score <= 0) {
+    return abandoned ? 'No points for your team before the game ended' : 'No points for your team this time';
+  }
+  if (abandoned) return `Your team was ${ordinal(team.rank)} when the game ended`;
+  if (team.rank === 1) {
+    const tied = teams.some((t) => t.rank === 1 && t.id !== team.id);
+    return tied ? 'Your team tied for first!' : 'Your team won!';
+  }
+  return `Your team came ${ordinal(team.rank)} of ${teams.length}`;
+}
+
+/**
+ * A team game's teams with who played for each, as the results show them;
+ * null when everyone played for themselves. Members keep the results' order
+ * (best first), with you first on your own team.
+ */
+function teamStandings(summary: GameSummary, standings: Standing[], youId: string): TeamStanding[] | null {
+  const teams = teamResults(summary);
+  if (!teams) return null;
+  return teams.map((t) => {
+    const ids = new Set(t.memberIds);
+    return {
+      id: t.id,
+      name: t.name,
+      score: t.score,
+      rank: t.rank,
+      members: standings
+        .filter((s) => ids.has(s.id))
+        .sort((a, b) => Number(b.id === youId) - Number(a.id === youId)),
+      mine: ids.has(youId),
+    };
+  });
+}
+
+/** The team your seat is on for the next game, as the room names it; null outside a team game. */
+function nextTeam(room: RoomSnapshot): { id: string; name: string } | null {
+  if (room.settings.mode !== 'teams') return null;
+  const id = room.players.find((x) => x.id === room.youId)?.teamId ?? null;
+  if (id === null) return null;
+  const name = room.teams.find((t) => t.id === id)?.name ?? TEAMS.find((t) => t.id === id)?.name;
+  return name === undefined ? null : { id, name };
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -374,7 +455,10 @@ export function Finale(p: Props) {
   // Banner and podium show at once, from the scores; the details wait a
   // moment for the server's summary (which normally came first anyway).
   const players = p.finalScores ?? room.players;
-  const base = useMemo(() => summaryFromPlayers(players), [players]);
+  // In a team game the stand-in ranks the room's teams too: the settings are
+  // still the game's (locked until the lobby), and so are the teams' scores.
+  const roomTeams = room.settings.mode === 'teams' ? room.teams : null;
+  const base = useMemo(() => summaryFromPlayers(players, roomTeams), [players, roomTeams]);
   const [waited, setWaited] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setWaited(true), FALLBACK_MS);
@@ -393,6 +477,8 @@ export function Finale(p: Props) {
   const standings: Standing[] = (summary ?? base).players.map((x) => ({ ...x, left: !here.has(x.id) }));
   const top = onPodium(standings);
   const rest = standings.filter((s) => !top.includes(s));
+  /** A team game's teams: they, not the players, take the podium. */
+  const teams = teamStandings(summary ?? base, standings, youId);
 
   const me = shown?.players.find((x) => x.id === youId) ?? null;
   // In the room but not in its results: joined after the game ended.
@@ -400,6 +486,41 @@ export function Finale(p: Props) {
   const hostName = room.players.find((x) => x.isHost)?.name ?? 'the host';
   const present = room.players.filter((x) => x.connected).length;
   const canShare = shown !== null && me !== null;
+  // The lobby's rule for starting: in a team game, every team needs enough
+  // players here. Until then the host's way on is the lobby, to sort the
+  // teams; or, left alone, to invite people (the server deals each newcomer
+  // into the team that is shortest, so every invite counts).
+  const short = isHost ? shortTeams(room.settings, room.players, room.teams) : [];
+  const needed = short.reduce((n, t) => n + t.needs, 0);
+  const shortId = useId();
+  // And as in the lobby, uneven teams (sizes more than 1 apart, counting the
+  // players here) may play again, but the host is asked first.
+  const status =
+    isHost && room.settings.mode === 'teams' ? readiness(teamViews(room.players, room.settings, room.teams)) : null;
+  const uneven = status && status.ready && status.uneven ? versus(status.sizes) : null;
+  const [confirming, setConfirming] = useState(false);
+  const asking = confirming && uneven !== null;
+  const askId = useId();
+  const againButton = useRef<HTMLButtonElement | null>(null);
+  const firstChoice = useRef<HTMLButtonElement | null>(null);
+  const asked = useRef(false);
+  // Teams that even out, or stop being ready, take the question with them;
+  // so does a look at the chat.
+  useEffect(() => {
+    if (uneven === null || !p.open) setConfirming(false);
+  }, [uneven, p.open]);
+  useEffect(() => {
+    if (asking) {
+      asked.current = true;
+      firstChoice.current?.focus();
+      return;
+    }
+    if (!asked.current) return;
+    asked.current = false;
+    // The question took focus away with it: hand it back to Play again.
+    const active = document.activeElement;
+    if (!active || active === document.body) againButton.current?.focus();
+  }, [asking]);
 
   // Play again waits out the opening, so nobody's results vanish mid-podium.
   const [settled, setSettled] = useState(false);
@@ -535,21 +656,17 @@ export function Finale(p: Props) {
 
             {/* Focusable, so a keyboard can scroll it (Safari makes no scroller focusable by itself). */}
             <div className="finale-body" tabIndex={0} role="region" aria-label="Results">
-              {joinedLate && (
-                <p className="finale-joined">
-                  {isHost
-                    ? 'You’re in. Start the next game when everyone’s ready.'
-                    : `You’re in. The next game starts when ${hostName} is ready.`}
-                </p>
-              )}
+              {joinedLate && <JoinedNote team={nextTeam(room)} isHost={isHost} hostName={hostName} />}
               <div className="finale-hero">
-                <p className="winner-banner">{bannerText(standings, abandoned)}</p>
+                <p className="winner-banner">
+                  {teams ? teamBannerText(teams, abandoned) : bannerText(standings, abandoned)}
+                </p>
                 {festive && (
                   <p className="finale-festive">
                     <span aria-hidden="true">{FESTIVE_EMOJI[festive]}</span> {GREETINGS[festive]}
                   </p>
                 )}
-                <Podium standings={standings} youId={youId} />
+                {teams ? <TeamPodium teams={teams} /> : <Podium standings={standings} youId={youId} />}
               </div>
               {/* Keyed: the details appear (and animate) afresh when the real summary replaces the stand-in. */}
               <div className="finale-details" key={shown?.id ?? ''}>
@@ -558,12 +675,21 @@ export function Finale(p: Props) {
                 {shown?.best && (
                   <DrawingOfTheGame
                     best={shown.best}
+                    team={teamResults(shown) ? { name: teamOf(shown, shown.best.drawerId)?.name ?? null } : null}
                     art={own?.drawing ?? null}
                     ready={own !== null && own.drawing !== undefined}
                   />
                 )}
-                {rest.length > 0 && (
-                  <Others rest={rest} youId={youId} title={top.length ? 'Everyone else' : 'Scores'} />
+                {teams ? (
+                  <TeamRoster
+                    teams={teams}
+                    others={standings.filter((s) => !teams.some((t) => t.members.includes(s)))}
+                    youId={youId}
+                  />
+                ) : (
+                  rest.length > 0 && (
+                    <Others rest={rest} youId={youId} title={top.length ? 'Everyone else' : 'Scores'} />
+                  )
                 )}
               </div>
             </div>
@@ -571,19 +697,78 @@ export function Finale(p: Props) {
             {(waitLine || isHost || canShare) && (
               <div className="finale-bar">
                 {waitLine && <p className="finale-wait">Waiting for {hostName} to start the next game</p>}
+                {short.length > 0 && present >= 2 && (
+                  <p className="finale-wait results-team-short" id={shortId}>
+                    {shortLine(short)}
+                  </p>
+                )}
                 {isHost && present < 2 && <InviteLink roomCode={room.roomCode} />}
-                {(isHost || canShare) && (
+                {asking ? (
+                  <div
+                    className="results-team-ask"
+                    role="group"
+                    aria-labelledby={askId}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Escape') return;
+                      // Just the question goes: the results stay open.
+                      e.preventDefault();
+                      setConfirming(false);
+                    }}
+                  >
+                    <p id={askId}>Teams are uneven ({uneven})</p>
+                    <div className="finale-actions">
+                      <button
+                        ref={firstChoice}
+                        type="button"
+                        className="big"
+                        disabled={p.busy}
+                        onClick={() => {
+                          setConfirming(false);
+                          p.onRestart();
+                        }}
+                      >
+                        Fix teams
+                      </button>
+                      <button
+                        type="button"
+                        className="primary big"
+                        disabled={p.busy}
+                        onClick={() => {
+                          setConfirming(false);
+                          p.onPlayAgain();
+                        }}
+                      >
+                        Start anyway
+                      </button>
+                    </div>
+                  </div>
+                ) : (isHost || canShare) && (
                   <div className={`finale-actions ${isHost && present < 2 ? 'stack' : ''}`}>
                     {isHost &&
                       (present < 2 ? (
                         <button type="button" className="primary big" disabled>
-                          Invite one more player to play again
+                          {needed > 0
+                            ? // A team game needs more than one: enough for every team.
+                              `Invite ${plural(needed, 'more player', 'more players')} to play again`
+                            : 'Invite one more player to play again'}
                         </button>
-                      ) : (
+                      ) : short.length > 0 ? (
+                        // Back to the lobby, where the teams can be sorted out.
                         <button
                           type="button"
                           className="primary big"
-                          onClick={p.onPlayAgain}
+                          onClick={p.onRestart}
+                          disabled={p.busy || !settled}
+                          aria-describedby={shortId}
+                        >
+                          Fix teams
+                        </button>
+                      ) : (
+                        <button
+                          ref={againButton}
+                          type="button"
+                          className="primary big"
+                          onClick={() => (uneven !== null ? setConfirming(true) : p.onPlayAgain())}
                           disabled={p.busy || !settled}
                         >
                           Play again
@@ -638,15 +823,51 @@ export function Finale(p: Props) {
 
 /* ------------------------------------------------------------ the parts */
 
+/**
+ * For someone who joined after the game ended: they're in for the next one
+ * (on their team, in a team game) and who starts it.
+ */
+function JoinedNote({
+  team,
+  isHost,
+  hostName,
+}: {
+  team: { id: string; name: string } | null;
+  isHost: boolean;
+  hostName: string;
+}) {
+  if (!team) {
+    return (
+      <p className="finale-joined">
+        {isHost
+          ? 'You’re in. Start the next game when everyone’s ready.'
+          : `You’re in. The next game starts when ${hostName} is ready.`}
+      </p>
+    );
+  }
+  const look = teamLook(team.id);
+  return (
+    <p className="finale-joined">
+      You’re in{' '}
+      <span className="team-chip results-team-joined" style={{ '--team': look.colour } as CSSProperties}>
+        <span className="team-emoji" aria-hidden="true">{look.emoji}</span>
+        <span className="results-team-label">{team.name}</span>
+      </span>{' '}
+      for the next game. {isHost ? 'Start it when everyone’s ready.' : `It starts when ${hostName} is ready.`}
+    </p>
+  );
+}
+
 function YourGame({ me, summary, outcome }: { me: SummaryPlayer; summary: GameSummary; outcome: Outcome | null }) {
   const headingId = useId();
   const chips = statChips(me);
   const news = outcome?.milestones ?? [];
   const line = outcome ? recordLine(outcome.records) : null;
+  const place = placeLine(me, summary);
   return (
     <section className="your-game" aria-labelledby={headingId}>
       <h3 id={headingId}>Your game</h3>
-      <p className="place">{placeLine(me, summary)}</p>
+      {place && <p className="place">{place}</p>}
       {chips.length > 0 && (
         <ul className="stats">
           {chips.map((c) => (
@@ -705,7 +926,18 @@ function Awards({ summary, youId }: { summary: GameSummary; youId: string }) {
   );
 }
 
-function DrawingOfTheGame({ best, art, ready }: { best: BestDrawing; art: HTMLCanvasElement | null; ready: boolean }) {
+function DrawingOfTheGame({
+  best,
+  team,
+  art,
+  ready,
+}: {
+  best: BestDrawing;
+  /** In a team game, the drawer's team (its name, if known); null when everyone played for themselves. */
+  team: { name: string | null } | null;
+  art: HTMLCanvasElement | null;
+  ready: boolean;
+}) {
   const headingId = useId();
   const meta = [
     best.likes > 0 ? `👍 ${best.likes}` : null,
@@ -713,13 +945,21 @@ function DrawingOfTheGame({ best, art, ready }: { best: BestDrawing; art: HTMLCa
     // nobody got can still win on likes: say so with a wink, not a zero.
     best.guessers === 0
       ? null
-      : best.solvers === 0
-        ? 'nobody guessed it 😅'
-        : best.solvers === best.guessers
-          ? 'everyone guessed it'
-          : `guessed by ${best.solvers} of ${best.guessers}`,
+      : team
+        ? // The first right answer ends a team's turn: the team got it, or nobody did.
+          best.solvers > 0
+          ? `${team.name ?? 'Their team'} got it`
+          : 'nobody got it 😅'
+        : best.solvers === 0
+          ? 'nobody guessed it 😅'
+          : best.solvers === best.guessers
+            ? 'everyone guessed it'
+            : `guessed by ${best.solvers} of ${best.guessers}`,
   ].filter((x): x is string => x !== null);
-  const line = meta.join(' · ');
+  const joined = meta.join(' · ');
+  // Sentence case, but a team's name stays as the team wrote it.
+  const line =
+    team?.name && joined.startsWith(team.name) ? joined : joined.charAt(0).toUpperCase() + joined.slice(1);
   return (
     <section className="finale-section best-drawing" aria-labelledby={headingId}>
       <h3 id={headingId}>Drawing of the game</h3>
@@ -735,7 +975,7 @@ function DrawingOfTheGame({ best, art, ready }: { best: BestDrawing; art: HTMLCa
           <span className="caption">
             “{best.word}” by {best.drawerName}
           </span>
-          {line && <span className="meta">{line.charAt(0).toUpperCase() + line.slice(1)}</span>}
+          {line && <span className="meta">{line}</span>}
         </figcaption>
       </figure>
     </section>
@@ -781,6 +1021,70 @@ function DrawingView({ art, label }: { art: HTMLCanvasElement; label: string }) 
     };
   }, [art]);
   return <canvas ref={ref} role="img" aria-label={label} />;
+}
+
+/**
+ * A team game's players, team by team, best team first: in a team game
+ * nobody stands on the podium by name, so everyone is listed here. Without
+ * points of their own (the points were the team's).
+ */
+function TeamRoster({ teams, others, youId }: { teams: TeamStanding[]; others: Standing[]; youId: string }) {
+  const headingId = useId();
+  return (
+    <section className="finale-section finale-others results-team-roster" aria-labelledby={headingId}>
+      <h3 id={headingId}>Teams</h3>
+      <ol className="results-team-groups">
+        {teams.map((t) => {
+          const look = teamLook(t.id);
+          return (
+            <li key={t.id} className="results-team-group" style={{ '--team': look.colour } as CSSProperties}>
+              <div className="results-team-head">
+                <span className="results-team-title">
+                  <span aria-hidden="true">{look.emoji}</span>
+                  <span className="results-team-label">{t.name}</span>
+                </span>
+                {t.mine && <span className="results-team-you">Your team</span>}
+                <span className="results-team-score">
+                  {t.score > 0 && `${ordinal(t.rank)} · `}
+                  {points(t.score)}
+                </span>
+              </div>
+              {t.members.length > 0 && <Members members={t.members} youId={youId} label={t.name} />}
+            </li>
+          );
+        })}
+        {others.length > 0 && (
+          // Only if the results ever list someone on no team: never left out.
+          <li className="results-team-group results-team-none">
+            <div className="results-team-head">
+              <span className="results-team-title">
+                <span className="results-team-label">Also played</span>
+              </span>
+            </div>
+            <Members members={others} youId={youId} label="Also played" />
+          </li>
+        )}
+      </ol>
+    </section>
+  );
+}
+
+function Members({ members, youId, label }: { members: Standing[]; youId: string; label: string }) {
+  return (
+    <ul className="results-team-members" aria-label={label}>
+      {members.map((s) => (
+        <li
+          key={s.id}
+          className={['results-team-member', s.id === youId && 'me', s.left && 'left'].filter(Boolean).join(' ')}
+        >
+          <Avatar i={s.avatar} size={24} />
+          <span className="results-team-pname">{s.name}</span>
+          {s.id === youId && <span className="results-team-me">(you)</span>}
+          {s.left && <span className="results-team-left">left</span>}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function Others({ rest, youId, title }: { rest: Standing[]; youId: string; title: string }) {

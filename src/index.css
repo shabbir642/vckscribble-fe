@@ -594,8 +594,10 @@ textarea {
   width: 100%;
 }
 .settings .field { margin-bottom: 14px; }
+/* As many equal columns as it has choices: the difficulty's three, the
+   lobby's two modes. */
 .segmented {
-  display: grid; grid-template-columns: repeat(3, 1fr);
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
   border: var(--outline); border-radius: var(--radius); overflow: hidden;
 }
 .segmented button {
@@ -1243,4 +1245,454 @@ a.share-target:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--
   }
   .share-preview { height: min(36vh, 300px); }
   .share-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* ----------------------------------------------------------------- teams */
+/*
+ * A team's chip, the same everywhere: its colour as the fill (set --team from
+ * TEAMS), ink text, the emoji and the name. Team colours are fills, borders and
+ * stripes only, never text: as text on white they fail contrast.
+ */
+.team-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--team, var(--paper-tint)); color: var(--ink);
+  border: 2px solid var(--ink); border-radius: 999px;
+  padding: 3px 10px 3px 8px; font-weight: 800; font-size: 0.9rem; line-height: 1.2;
+  max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.team-chip .team-emoji { font-size: 1.05em; flex: none; }
+
+/* lobby: teams (agent LOBBY appends below this line; classes prefixed lobby-team-) */
+/* For screen readers only: a one-line chip's notes, a heading behind a rename box. */
+.lobby-team-sr {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+
+/* The mode switch, top of the players card: how the room plays, then how
+   many teams. Side by side where both fit. */
+.lobby-team-mode { display: flex; flex-wrap: wrap; gap: 8px 10px; margin-bottom: 14px; }
+.lobby-team-mode .segmented { flex: 3 1 260px; }
+.lobby-team-mode .segmented + .segmented { flex: 2 1 210px; }
+/* "Everyone for themselves" can take two lines on a phone. */
+.lobby-team-mode .segmented button { line-height: 1.15; padding: 9px 8px; }
+
+/* Full at a limit the host chose: said on the roster, with the fix beside it. */
+.lobby-team-full {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px;
+  background: var(--pink-soft); border: 2px solid var(--ink); border-radius: var(--radius);
+  padding: 8px 10px 8px 14px; margin-bottom: 14px;
+}
+.lobby-team-full p { flex: 1 1 14em; font-weight: 800; font-size: 0.95rem; line-height: 1.35; }
+.lobby-team-full button { flex: none; }
+
+/* Whether the teams can start: green when ready, yellow when uneven, pink
+   while a team is short of people. The quick fixes sit beside it. */
+.lobby-team-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 14px; }
+.lobby-team-line {
+  flex: 1 1 16em; padding: 8px 12px; font-weight: 800; line-height: 1.35;
+  background: var(--green-soft); border: 2px solid var(--ink); border-radius: var(--radius);
+}
+.lobby-team-status.uneven .lobby-team-line { background: var(--yellow-soft); }
+.lobby-team-status.short .lobby-team-line { background: var(--pink-soft); }
+.lobby-team-fixes { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* A card per team, in place of the player grid. The team's colour fills the
+   head and the text on it stays ink (as text, the colours fail contrast).
+   At most --cols across (set inline: 2, or 3 for three teams), and fewer
+   where cards would come out narrower than 15rem: two across in a laptop
+   window beside a call, one on a phone. */
+.lobby-team-cards {
+  display: grid; gap: 12px; align-items: start;
+  grid-template-columns: repeat(auto-fill, minmax(max(15rem, (100% - (var(--cols, 2) - 1) * 12px) / var(--cols, 2)), 1fr));
+}
+.lobby-team-card {
+  container: lobby-team-card / inline-size;
+  background: var(--paper); border: 2.5px solid var(--ink); border-radius: var(--radius);
+  overflow: hidden;
+}
+.lobby-team-card.mine { box-shadow: var(--shadow-sm); }
+/* The emoji, the name with the head count under it, and Join (or Your team).
+   The name keeps the whole line and Join sits beside the count, which fits
+   any card down to a phone's; a roomy card puts Join beside both instead. */
+.lobby-team-head {
+  position: relative;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 2px 8px;
+  grid-template-areas: "emoji title title" "emoji count action";
+  padding: 8px 10px; background: var(--team, var(--paper-tint)); color: var(--ink);
+  border-bottom: 2.5px solid var(--ink);
+}
+/* Renaming: the box has the line to itself; Join steps aside meanwhile. */
+.lobby-team-head.renaming { grid-template-areas: "emoji title title" "emoji count count"; }
+@container lobby-team-card (min-width: 22rem) {
+  .lobby-team-head:not(.renaming) { grid-template-areas: "emoji title action" "emoji count action"; }
+}
+.lobby-team-emoji { grid-area: emoji; font-size: 1.7rem; line-height: 1; }
+.lobby-team-title { grid-area: title; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.lobby-team-name { margin: 0; min-width: 0; font: 600 1.1rem/1.15 var(--display); overflow-wrap: anywhere; }
+.lobby-team-count { grid-area: count; font-size: 0.82rem; font-weight: 800; }
+.lobby-team-action { grid-area: action; justify-self: end; }
+.lobby-team-yours {
+  display: inline-block; white-space: nowrap;
+  font: 600 0.85rem/1 var(--display); padding: 6px 10px;
+  background: var(--yellow); border: 2px solid var(--ink); border-radius: 999px;
+}
+.lobby-team-edit {
+  flex: none; padding: 3px 6px; font-size: 0.9rem; line-height: 1;
+  border-width: 2px; border-radius: var(--radius-sm); box-shadow: none;
+}
+/* Save and Cancel drop below the box, as a pair, when the line is too short. */
+.lobby-team-rename { flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.lobby-team-rename input { flex: 1 1 8rem; min-width: 0; padding: 6px 10px; border-width: 2px; border-radius: var(--radius-sm); }
+.lobby-team-rename-actions { display: flex; gap: 6px; margin-left: auto; }
+.lobby-team-empty { padding: 14px 10px; text-align: center; color: var(--ink-soft); font-weight: 800; }
+
+/* Members, and the compact roster of a big room: a small avatar and a
+   one-line name per chip. */
+.lobby-team-members {
+  list-style: none; margin: 0; padding: 8px;
+  display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+}
+.lobby-team-members.compact { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+/* The big room's roster sits straight on the players card (phones too). */
+.lobby-team-members.lobby-team-roster { padding: 0; }
+.lobby-team-member {
+  position: relative; display: flex; align-items: center; gap: 6px; min-width: 0;
+  padding: 4px 8px 4px 4px; background: var(--paper-tint);
+  border: 2px solid var(--ink); border-radius: 999px;
+}
+/* Three to a row on a phone: every pixel spared goes to the name. */
+.lobby-team-members.compact .lobby-team-member { gap: 4px; padding: 3px 6px 3px 3px; }
+.lobby-team-member.me { background: var(--yellow-soft); }
+.lobby-team-member.away { opacity: 0.5; }
+.lobby-team-face { position: relative; flex: none; display: grid; }
+.lobby-team-crown { position: absolute; top: -10px; left: -6px; font-size: 0.9rem; line-height: 1; transform: rotate(-12deg); }
+.lobby-team-who { display: grid; min-width: 0; line-height: 1.2; }
+.lobby-team-pname { font-weight: 800; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lobby-team-members.compact .lobby-team-pname { font-size: 0.84rem; }
+.lobby-team-note { font-size: 0.72rem; font-weight: 800; color: var(--ink-soft); }
+/* The boot waits over the end of the chip until a hover or a tap (or while a
+   vote is running), as in the game's scoreboard. */
+.lobby-team-kick { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); }
+.lobby-team-kick:not(.live) { opacity: 0; pointer-events: none; transition: opacity 120ms; }
+.lobby-team-member:hover .lobby-team-kick, .lobby-team-member:focus-within .lobby-team-kick { opacity: 1; pointer-events: auto; }
+
+/* "Change name or avatar" over team cards or a big roster: the form opens
+   under its button, ruled off from the players below it. */
+.profile-edit.lobby-team-profile {
+  margin: 0 0 16px; padding: 0 0 16px;
+  border-top: none; border-bottom: 2px dashed #cfcbe9;
+}
+
+.lobby-team-loose { margin-top: 12px; }
+.lobby-team-loose h4 { margin: 0 0 6px; font: 600 1rem/1.2 var(--display); }
+.lobby-team-loose .lobby-team-members { padding: 0; }
+.lobby-team-how { margin-top: 12px; color: var(--ink-soft); font-weight: 700; font-size: 0.9rem; line-height: 1.4; }
+
+/* Start with uneven teams: asked once, in the start bar. */
+.lobby-team-confirm {
+  width: 100%; display: grid; gap: 10px; justify-items: center; text-align: center;
+  padding: 14px; background: var(--yellow-soft);
+}
+.lobby-team-confirm p { font: 600 1.15rem/1.2 var(--display); }
+.lobby-team-confirm .row { justify-content: center; }
+
+/* Settings: what a choice means in a team game, and how long the game runs. */
+.lobby-team-aside { font-weight: 700; color: var(--ink-soft); }
+.lobby-team-length > .lobby-team-length-value {
+  display: grid; justify-items: end; text-align: right;
+  font: 600 1rem/1.25 var(--display);
+}
+.lobby-team-length-value small { font: 700 0.8rem/1.3 var(--body); color: var(--ink-soft); }
+.lobby-team-nudge {
+  margin: -4px 0 14px; padding: 8px 12px; line-height: 1.4;
+  background: var(--yellow-soft); border: 2px solid var(--ink); border-radius: var(--radius);
+  font-weight: 800; font-size: 0.9rem;
+}
+.lobby-team-nudge button.link { font-size: inherit; }
+
+/* Fingers: the pencil is as easy to hit as the kick button. */
+@media (pointer: coarse) {
+  .lobby-team-edit { min-width: 32px; min-height: 32px; }
+}
+@media (max-width: 600px) {
+  .lobby-team-members { padding: 6px; }
+}
+/* Phones: the host's start bar goes last and rides the bottom of the screen,
+   so Start is always in reach however long the roster. */
+@media (max-width: 600px), (max-width: 900px) and (orientation: landscape) and (max-height: 520px) {
+  .start-bar.lobby-team-sticky {
+    order: 9; position: sticky; bottom: 0; z-index: 20;
+    padding: 14px 0 max(10px, env(safe-area-inset-bottom));
+    background: linear-gradient(to bottom, rgba(66, 49, 224, 0), var(--indigo) 16px);
+  }
+}
+
+/* More teams would play better: a row of its own under the readiness line,
+   with the count that would, in one tap. */
+.lobby-team-tip {
+  flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px;
+  padding: 8px 10px 8px 12px; background: var(--yellow-soft); border: 2px solid var(--ink); border-radius: var(--radius);
+}
+.lobby-team-tip p { flex: 1 1 14em; font-weight: 800; line-height: 1.35; }
+.lobby-team-tip button { flex: none; }
+
+/* A vote kick with its majority but no vote from the player's team says so
+   ("🥾 3/3 + 🥭 vote"): on a chip too narrow for that, in two lines rather
+   than over the next chip. */
+button.kick.lobby-team-wait { white-space: normal; line-height: 1.1; }
+.lobby-team-need { white-space: nowrap; }
+
+/* game: teams (agent GAME appends below this line; classes prefixed game-team-) */
+/* A team game's screen (Game.tsx, Scores.tsx, Chat.tsx). Team colours fill,
+   ring and stripe; the writing on them stays ink (--team is set inline). */
+/* For screen readers only: the whole name behind a one-word chip, and its notes. */
+.game-team-sr {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+/* A long team name ends in an ellipsis rather than leaving its chip. */
+.game-team-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* The team scores take a row of the play area: on a wide screen above the
+   players, with the drawing and the guesses running the full height beside. */
+.play.game-team-play { grid-template-rows: auto minmax(0, 1fr); }
+.game-team-play > .game-team-bar { grid-column: 1; grid-row: 1; }
+.game-team-play > .players-panel { grid-column: 1; grid-row: 2; }
+.game-team-play > .stage { grid-column: 2; grid-row: 1 / span 2; }
+.game-team-play > .chat { grid-column: 3; grid-row: 1 / span 2; }
+
+/* A chip per team, in the game's order so none ever jumps. The team drawing
+   is raised with a pencil on its corner; yours wears a yellow ring and tag. */
+.game-team-bar {
+  list-style: none; margin: 0; padding: 8px 0 0;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start;
+}
+.game-team-item { position: relative; min-width: 0; container: game-team-chip / inline-size; }
+.team-chip.game-team-chip {
+  display: flex; width: 100%; gap: 6px; padding: 5px 12px 5px 9px; font-size: 0.95rem;
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+.game-team-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.game-team-score {
+  flex: none; margin-left: auto;
+  font: 700 1.05rem/1 var(--display); font-variant-numeric: tabular-nums;
+  animation: pop 340ms cubic-bezier(0.25, 1.4, 0.5, 1) both;
+}
+.game-team-up .game-team-chip { transform: translate(-2px, -2px); box-shadow: var(--shadow-sm); }
+.game-team-mine .game-team-chip { outline: 3px solid var(--yellow); outline-offset: 2px; }
+.game-team-you {
+  position: absolute; top: -9px; left: 8px; z-index: 1;
+  padding: 1px 6px; background: var(--yellow); color: var(--ink);
+  border: 2px solid var(--ink); border-radius: 999px;
+  font: 800 0.68rem/1.1 var(--body); transform: rotate(-4deg);
+}
+.game-team-pen {
+  position: absolute; top: -12px; right: -2px; z-index: 1;
+  font-size: 1.05rem; line-height: 1; animation: wiggle 1.2s ease-in-out infinite;
+}
+/* Too narrow for the name (a phone with three or four teams): the emoji and
+   the score, which is what the bar is for. */
+@container game-team-chip (max-width: 119px) {
+  .game-team-name { display: none; }
+  .team-chip.game-team-chip { justify-content: center; padding-inline: 6px; }
+  .game-team-score { margin-left: 0; }
+}
+
+/* The players, team by team: each under its chip, striped in its colour, with
+   the chip held in view while the team's list scrolls under it. */
+.game-team-group { border-left: 5px solid var(--team, #cfcbe9); }
+.game-team-group + .game-team-group { border-top: 2.5px solid var(--ink); }
+.game-team-head {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; min-width: 0;
+  padding: 7px 10px; background: var(--paper); border-bottom: 2px solid #e6e3fb;
+}
+.game-team-head .team-chip { font-size: 0.85rem; }
+.game-team-none { font-weight: 800; font-size: 0.85rem; color: var(--ink-soft); }
+.game-team-empty { padding: 8px 12px; font-size: 0.85rem; font-weight: 700; color: var(--ink-soft); }
+/* No rank and no points: a player's row is their face, name and badge. */
+.player-row.game-team-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+
+/* The watchers' side chat, which the drawing team never sees: quieter than
+   the guesses, and marked. */
+.msg.game-team-watch, .msg.game-team-watch .who { color: var(--ink-soft); }
+.game-team-eyes { margin-right: 4px; }
+
+/* Another team's turn: the word under a cover the player lifts. */
+.game-team-secret {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: 4px 10px; margin-top: 3px;
+}
+.word-strip button.game-team-show { padding: 4px 10px; font-size: 0.85rem; }
+.game-team-shh { font-size: 0.85rem; font-weight: 800; color: var(--ink-soft); }
+.game-team-shh-alt { display: none; }
+
+/* On the drawing: the team's chip heads the word choice, the reveal and the
+   standings. What a turn won is green, like a right guess. */
+.overlay .team-chip { font-size: 1rem; padding: 4px 12px 4px 9px; }
+.overlay .game-team-gain {
+  font: 700 clamp(1.5rem, 3.4vw, 2.1rem)/1.1 var(--display);
+  color: var(--green); -webkit-text-stroke: 1.5px var(--ink); paint-order: stroke fill;
+}
+.overlay .game-team-secs { font-size: 0.6em; color: var(--paper); -webkit-text-stroke: 0; }
+.overlay .game-team-who { display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 800; }
+.overlay ol.game-team-standings li { grid-template-columns: auto minmax(0, 1fr) auto; }
+.overlay .game-team-standings li > span:nth-child(2) { display: flex; align-items: center; gap: 8px; }
+.overlay .game-team-standings .team-chip { flex: 0 1 auto; min-width: 0; font-size: 0.9rem; }
+.overlay .game-team-standings li.game-team-mine { background: var(--yellow-soft); }
+.game-team-yours {
+  flex: none; padding: 1px 8px; background: var(--yellow); color: var(--ink);
+  border: 2px solid var(--ink); border-radius: 999px;
+  font-size: 0.72rem; font-weight: 800; line-height: 1.3;
+}
+@container board (max-width: 520px) {
+  .overlay .team-chip { font-size: 0.85rem; padding: 2px 9px 2px 7px; }
+  .overlay .game-team-gain { font-size: 1.35rem; }
+  .overlay .game-team-who .avatar { width: 24px !important; height: 24px !important; font-size: 14px !important; }
+}
+
+/* "You're on Team Grape": below the room's own toasts when one is up. */
+.game-team-toasts .team-chip { vertical-align: middle; margin-left: 2px; }
+.toasts:not(.game-team-toasts) ~ .game-team-toasts { top: 80px; }
+
+/* Tablets, phones, landscape phones: the team scores in one line. */
+@media (max-width: 900px), (orientation: landscape) and (max-height: 520px) {
+  .game-team-bar {
+    grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
+    gap: 8px; padding-top: 7px;
+  }
+}
+/* Tablets and phones in portrait: the line runs full width under the strip,
+   above the drawing, out of the narrow players panel. */
+@media (max-width: 900px) {
+  .play.game-team-play {
+    grid-template-rows: auto auto auto minmax(140px, 1fr);
+    grid-template-rows: auto minmax(0, calc(100cqw * 3 / 4)) auto minmax(clamp(104px, 30%, 210px), 1fr);
+    grid-template-areas: "teams teams" "canvas canvas" "tools tools" "players chat";
+  }
+  .game-team-play > .game-team-bar { grid-area: teams; }
+  .game-team-play > .players-panel { grid-area: players; }
+  .game-team-play > .chat { grid-area: chat; }
+}
+/* Phones: smaller chips; and the strip has two lines, so a watcher's warning
+   takes the first while the word shows, and no line while it is covered. */
+@media (max-width: 600px), (orientation: landscape) and (max-height: 520px) {
+  .team-chip.game-team-chip { gap: 5px; padding: 3px 9px 3px 7px; font-size: 0.82rem; }
+  .game-team-score { font-size: 0.95rem; }
+  .game-team-you { top: -8px; font-size: 0.62rem; }
+  .game-team-pen { top: -10px; font-size: 0.9rem; }
+}
+@media (max-width: 600px) {
+  .play .player-row.game-team-row { grid-template-columns: auto minmax(0, 1fr); }
+  .game-team-head { padding: 5px 6px; }
+  .game-team-head .team-chip { padding: 2px 8px 2px 6px; font-size: 0.78rem; }
+  .game-team-secret { gap: 2px 8px; margin-top: 2px; }
+  .word-strip button.game-team-show { padding: 3px 9px; font-size: 0.78rem; }
+  .game-team-secret .game-team-shh { display: none; }
+  .game-team-heading.game-team-shown .game-team-drawing { display: none; }
+  .game-team-heading.game-team-shown .game-team-shh-alt { display: inline; }
+}
+/* Phones in landscape: the line sits in the side column, over the players. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .play.game-team-play {
+    grid-template-rows: auto auto minmax(0, 2fr) minmax(0, 3fr);
+    grid-template-areas: "canvas tools" "canvas teams" "canvas players" "canvas chat";
+  }
+  .game-team-play > .game-team-bar { grid-area: teams; }
+  .game-team-play > .players-panel { grid-area: players; }
+  .game-team-play > .chat { grid-area: chat; }
+}
+
+/* results: teams (agent RESULTS appends below this line; classes prefixed results-team-) */
+/* A team game's results (Finale.tsx, Podium.tsx): the teams on the podium,
+   each step in its team's colour with a few of its players standing on it,
+   then everyone listed team by team. The colours fill and stripe; the
+   writing on them is ink (--team is set inline from TEAMS). */
+.step.results-team-step .block { background: var(--team); }
+.results-team-faces { display: flex; justify-content: center; margin-bottom: 2px; }
+.results-team-face, .results-team-more {
+  display: inline-grid; place-items: center; flex: none;
+  width: 26px; height: 26px; border: 2px solid var(--ink); border-radius: 50%;
+  font-size: 15px; line-height: 1;
+}
+.results-team-face + .results-team-face, .results-team-face + .results-team-more { margin-left: -8px; }
+.results-team-more {
+  width: auto; min-width: 26px; padding: 0 5px; border-radius: 999px;
+  background: var(--paper); color: var(--ink); font: 700 0.72rem/1 var(--display);
+}
+/* Two lines at most: team names run to 20 characters. */
+.results-team-name {
+  max-width: 100%; overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  color: var(--paper); font-weight: 800; line-height: 1.15;
+  text-wrap: balance; overflow-wrap: anywhere;
+}
+/* Yellow, as for anything that is yours. */
+.results-team-you {
+  flex: none; padding: 1px 8px;
+  background: var(--yellow); color: var(--ink);
+  border: 2px solid var(--ink); border-radius: 999px;
+  font-size: 0.72rem; font-weight: 800; line-height: 1.2; white-space: nowrap;
+}
+.step .results-team-you { margin-top: 3px; }
+
+/* Everyone, team by team: a sticker per team headed in its colour. */
+.results-team-groups { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.results-team-group {
+  overflow: hidden; color: var(--ink); background: var(--paper);
+  border: var(--outline); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.results-team-head {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px;
+  padding: 8px 12px; background: var(--team, var(--paper-tint));
+}
+.results-team-group > .results-team-members { border-top: var(--outline); }
+.results-team-title {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px;
+  font: 600 1.1rem/1.2 var(--display);
+}
+.results-team-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.results-team-score { flex: none; margin-left: auto; font: 600 1rem/1.2 var(--display); white-space: nowrap; }
+.results-team-members { list-style: none; margin: 0; padding: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+.results-team-member {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%;
+  padding: 2px 10px 2px 2px; background: var(--paper-tint);
+  border: 2px solid var(--ink); border-radius: 999px;
+  font-weight: 800; font-size: 0.9rem; line-height: 1.2;
+}
+.results-team-member.me { background: var(--yellow-soft); }
+.results-team-member.left { opacity: 0.6; }
+.results-team-pname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.results-team-me, .results-team-left { flex: none; color: var(--ink-soft); font-size: 0.8rem; font-weight: 700; }
+
+/* "You're in Team Grape for the next game": the team's own chip, in the line. */
+.results-team-joined { vertical-align: middle; margin: 0 1px; }
+
+/* Why the host's button says "Fix teams". It may name every short team, so
+   unlike the waiting line it wraps rather than lose its end. */
+.finale-wait.results-team-short { white-space: normal; text-wrap: balance; }
+
+/* Play again with uneven teams: the lobby's question, in place of the buttons.
+   A landscape phone's one-row bar keeps it on one row. */
+.results-team-ask { display: grid; gap: 8px; }
+.results-team-ask > p { font: 600 1.1rem/1.2 var(--display); text-align: center; text-wrap: balance; }
+@media (orientation: landscape) and (max-height: 520px) {
+  .results-team-ask { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+  .results-team-ask > p { flex: 1 1 180px; font-size: 1rem; text-align: left; }
+}
+
+@media (max-width: 600px) {
+  .results-team-face, .results-team-more { width: 22px; height: 22px; font-size: 13px; }
+  .results-team-more { width: auto; min-width: 22px; padding: 0 4px; font-size: 0.68rem; }
+  .results-team-face + .results-team-face, .results-team-face + .results-team-more { margin-left: -7px; }
+  .results-team-name { font-size: 0.92rem; }
+}
+/* Landscape phones: the podium sits in its column, so one line of name, cut
+   short at its end (a clamp would cut it at its first space: "Team…"). */
+@media (orientation: landscape) and (max-height: 520px) {
+  .results-team-face, .results-team-more { width: 20px; height: 20px; font-size: 12px; border-width: 1.5px; }
+  .results-team-more { width: auto; min-width: 20px; padding: 0 4px; font-size: 0.65rem; }
+  .results-team-name { display: block; font-size: 0.85rem; white-space: nowrap; text-overflow: ellipsis; }
+  .step .results-team-you { margin-top: 1px; padding: 0 6px; font-size: 0.65rem; }
 }

@@ -1,4 +1,15 @@
-import type { Award, AwardId, GameSummary, Player, SummaryPlayer } from '../generated/contract';
+import {
+  MIN_TEAM_SIZE,
+  TEAMS,
+  type Award,
+  type AwardId,
+  type GameSummary,
+  type Player,
+  type RoomSettings,
+  type SummaryPlayer,
+  type Team,
+  type TeamResult,
+} from '../generated/contract';
 import { GREETINGS, type Festive } from './season';
 
 /**
@@ -72,9 +83,11 @@ export const AWARDS: Record<
  * Stands in for the server's summary until it arrives, or if it never does:
  * the same players and ranks the server would list (everyone still here, and
  * anyone gone who scored), and nothing it alone knows: no awards, no drawing.
+ * `teams` are the room's in a team game (null or empty otherwise): their
+ * scores rank them, and each player is on the team of their seat.
  * Never recorded as a game (see records.ts).
  */
-export function summaryFromPlayers(players: Player[]): GameSummary {
+export function summaryFromPlayers(players: Player[], teams: readonly Team[] | null = null): GameSummary {
   const kept = players
     .map((p, joined) => ({ p, joined }))
     .filter(({ p }) => p.connected || p.score > 0)
@@ -86,6 +99,7 @@ export function summaryFromPlayers(players: Player[]): GameSummary {
         a.joined - b.joined,
     )
     .map(({ p }) => p);
+  const teamGame = teams !== null && teams.length > 0;
   return {
     id: FALLBACK_ID,
     players: kept.map(
@@ -110,6 +124,22 @@ export function summaryFromPlayers(players: Player[]): GameSummary {
     rounds: 0,
     turns: 0,
     abandoned: false,
+    mode: teamGame ? 'teams' : 'classic',
+    teams: teamGame
+      ? teams
+          .map((t, order) => ({ t, order }))
+          // Best first; at equal scores in the game's own order.
+          .sort((a, b) => b.t.score - a.t.score || a.order - b.order)
+          .map(
+            ({ t }): TeamResult => ({
+              id: t.id,
+              name: t.name,
+              score: t.score,
+              rank: 1 + teams.filter((o) => o.score > t.score).length,
+              memberIds: kept.filter((p) => (p.teamId ?? null) === t.id).map((p) => p.id),
+            }),
+          )
+      : null,
   };
 }
 
@@ -117,6 +147,73 @@ export function summaryFromPlayers(players: Player[]): GameSummary {
 export function podium(summary: GameSummary): SummaryPlayer[] {
   // Stable, so the server's order settles equal ranks.
   return [...summary.players].sort((a, b) => a.rank - b.rank).slice(0, 3);
+}
+
+/* ----------------------------------------------------------------- teams */
+
+/**
+ * A team game's teams, best first; null when everyone played for themselves
+ * (or the summary came from a server that knew no teams).
+ */
+export function teamResults(summary: GameSummary): TeamResult[] | null {
+  return summary.mode === 'teams' && summary.teams?.length ? summary.teams : null;
+}
+
+/** The team someone played for, in a team game. */
+export function teamOf(summary: GameSummary, playerId: string | null): TeamResult | null {
+  if (playerId === null) return null;
+  return teamResults(summary)?.find((t) => t.memberIds.includes(playerId)) ?? null;
+}
+
+/** The teams on the podium: the best three, best first. */
+export function teamPodium(summary: GameSummary): TeamResult[] {
+  // Stable, so the server's order settles equal ranks.
+  return [...(teamResults(summary) ?? [])].sort((a, b) => a.rank - b.rank).slice(0, 3);
+}
+
+/** For a team whose id this page doesn't know: no colour of its own. */
+const UNKNOWN_TEAM = { emoji: '⭐', colour: '#f4f2ff' };
+
+/**
+ * How a team looks: its emoji and its colour, always shown together with its
+ * name (which comes from the game: the host may have renamed it). The colour
+ * is for fills, borders and stripes only, never text: as text on white or
+ * indigo it fails contrast.
+ */
+export function teamLook(id: string): { emoji: string; colour: string } {
+  const team = TEAMS.find((t) => t.id === id);
+  return team ? { emoji: team.emoji, colour: team.colour } : UNKNOWN_TEAM;
+}
+
+/**
+ * The teams that can't play the next game yet, with how many more players
+ * each needs: the lobby's rule, every team needs MIN_TEAM_SIZE players here.
+ * None in a game where everyone plays for themselves. `teams` are the room's
+ * (the first `teamCount` of TEAMS, with the host's names).
+ */
+export function shortTeams(
+  settings: Pick<RoomSettings, 'mode' | 'teamCount'>,
+  players: readonly Player[],
+  teams: readonly Team[],
+): { name: string; needs: number }[] {
+  if (settings.mode !== 'teams') return [];
+  const playing = teams.length ? teams : TEAMS.slice(0, settings.teamCount);
+  return playing.flatMap((t) => {
+    const here = players.filter((p) => p.connected && (p.teamId ?? null) === t.id).length;
+    return here < MIN_TEAM_SIZE ? [{ name: t.name, needs: MIN_TEAM_SIZE - here }] : [];
+  });
+}
+
+/**
+ * Why the next game can't start yet, in the lobby's words (and the server's,
+ * for one team): "Team Kiwi needs 1 more player", "Team Kiwi needs 1 more
+ * player and Team Grape needs 2 more players".
+ */
+export function shortLine(short: readonly { name: string; needs: number }[]): string {
+  const parts = short.map((t) => `${oneLine(t.name)} needs ${count(t.needs, 'more player', 'more players')}`);
+  const last = parts.pop();
+  if (last === undefined) return '';
+  return parts.length ? `${parts.join(', ')} and ${last}` : last;
 }
 
 /** Names as one line of plain text (a stray newline would break a share). */
@@ -148,6 +245,8 @@ const NAMES_MAX = 60;
 /** The big line on the share picture, and the first line of the message. */
 export function headline(summary: GameSummary, youId: string | null): string {
   if (summary.abandoned) return 'Our Drawdle game ended early';
+  const teams = teamResults(summary);
+  if (teams) return teamHeadline(teams, youId);
   // Points win, not places: where nobody scored, everyone shares first place
   // and nobody won (the picture crowns nobody either).
   const winners = summary.players
@@ -160,6 +259,30 @@ export function headline(summary: GameSummary, youId: string | null): string {
     }
     if (you.rank === 2 || you.rank === 3) return `I came ${ordinal(you.rank)} at Drawdle!`;
   }
+  return winnersLine(winners, ['other', 'others']);
+}
+
+/**
+ * A team game's headline: the team's win is yours to share, and anyone
+ * else names the winners. As for players, a team wins only with points.
+ */
+function teamHeadline(teams: TeamResult[], youId: string | null): string {
+  const winners = teams.filter((t) => t.rank === 1 && t.score > 0);
+  const yours = youId === null ? undefined : teams.find((t) => t.memberIds.includes(youId));
+  if (yours && winners.includes(yours)) {
+    return winners.length > 1 ? 'We tied for first at Drawdle!' : 'My team won at Drawdle!';
+  }
+  return winnersLine(
+    winners.map((t) => oneLine(t.name)),
+    ['other team', 'other teams'],
+  );
+}
+
+/**
+ * "Ann won our Drawdle game!", or the winners of a tie; "We played Drawdle!"
+ * when nobody won. `others` names winners left unnamed: "2 others", "2 other teams".
+ */
+function winnersLine(winners: string[], others: [one: string, many: string]): string {
   const [a, b, c] = winners;
   if (a === undefined) return 'We played Drawdle!';
   let named: string[];
@@ -174,20 +297,20 @@ export function headline(summary: GameSummary, youId: string | null): string {
   } else {
     // "A, B and C", or "A, B and 2 others"; when that is too long, "A and 3 others".
     named = winners.length === 3 ? [a, b, c] : [a, b];
-    text = tied(named, winners.length - named.length);
+    text = tied(named, winners.length - named.length, others);
     if (text.length > NAMES_MAX) {
       named = [a];
-      text = tied(named, winners.length - 1);
+      text = tied(named, winners.length - 1, others);
     }
   }
-  // Someone who named themselves after a link gets no free advert: the
-  // sentence goes plain rather than carry it into the sharer's chats.
+  // Someone who named themselves (or their team) after a link gets no free
+  // advert: the sentence goes plain rather than carry it into the sharer's chats.
   return named.some(linkLike) ? 'We played Drawdle!' : text;
 }
 
 /** "A, B and C tied for first!", or with the rest counted: "A and 2 others tied for first!". */
-function tied(names: string[], others: number): string {
-  const list = others ? [...names, count(others, 'other', 'others')] : names;
+function tied(names: string[], rest: number, [one, many]: [string, string]): string {
+  const list = rest ? [...names, count(rest, one, many)] : names;
   return `${list.slice(0, -1).join(', ')} and ${list[list.length - 1] ?? ''} tied for first!`;
 }
 
@@ -269,10 +392,12 @@ function message(summary: GameSummary, youId: string | null, url: string, join: 
   return room >= 12 ? `${clip(head, room)}\n${cta}` : cta;
 }
 
-/** Who the picture's chips celebrate: at most two, the podium's winner last. */
+/** Who the picture's chips celebrate: at most two (a classic game's podium winner last). */
 export function cardAwards(summary: GameSummary): Award[] {
   const rank = new Map(summary.players.map((p) => [p.id, p.rank]));
   const known = summary.awards.filter((a) => rank.has(a.playerId));
+  const teams = teamResults(summary);
+  if (teams) return teamCardAwards(known, teams);
   // The winner is already crowned on the podium; the chips are the others' moment.
   const others = known.filter((a) => rank.get(a.playerId) !== 1);
   const picked: Award[] = [];
@@ -282,6 +407,27 @@ export function cardAwards(summary: GameSummary): Award[] {
   }
   for (const a of [...others, ...known]) {
     if (picked.length < 2 && !picked.includes(a)) picked.push(a);
+  }
+  return picked;
+}
+
+/**
+ * A team game's podium crowns teams, not players, so any award may make the
+ * picture: two different people, and from two different teams where the
+ * awards allow (a picture shared to the whole office celebrates both sides).
+ */
+function teamCardAwards(awards: Award[], teams: TeamResult[]): Award[] {
+  const team = (a: Award) => teams.find((t) => t.memberIds.includes(a.playerId))?.id;
+  const picked: Award[] = [];
+  const passes: ((a: Award) => boolean)[] = [
+    (a) => !picked.some((p) => p.playerId === a.playerId || team(p) === team(a)),
+    (a) => !picked.some((p) => p.playerId === a.playerId),
+    () => true,
+  ];
+  for (const ok of passes) {
+    for (const a of awards) {
+      if (picked.length < 2 && !picked.includes(a) && ok(a)) picked.push(a);
+    }
   }
   return picked;
 }
@@ -298,7 +444,8 @@ export function cardAlt(summary: GameSummary, youId: string | null, festive: Fes
     const likes = best.likes > 0 ? `, ${count(best.likes, 'like', 'likes')}` : '';
     parts.push(`Drawing of the game: ${by}${likes}.`);
   }
-  const top = podium(summary);
+  // A team game's podium has the teams on it.
+  const top = teamResults(summary) ? teamPodium(summary) : podium(summary);
   if (top.length) {
     // As the picture shows them: a place only for those who scored.
     const places = top.map((p) => {

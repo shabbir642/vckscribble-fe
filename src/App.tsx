@@ -165,6 +165,9 @@ export function App() {
           onProfile={r.updateProfile}
           onGuess={r.sendGuess}
           onKick={r.kick}
+          onJoinTeam={r.joinTeam}
+          onShuffleTeams={r.shuffleTeams}
+          onRenameTeam={r.renameTeam}
         />
       )}
 

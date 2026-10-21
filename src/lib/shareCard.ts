@@ -1,7 +1,16 @@
-import type { BestDrawing, GameSummary, SummaryPlayer } from '../generated/contract';
+import type { BestDrawing, GameSummary, SummaryPlayer, TeamResult } from '../generated/contract';
 import { AVATARS, BACKDROPS, avatarSlot } from '../components/Avatar';
 import { renderDrawing } from './render';
-import { AWARDS, cardAwards, graphemes, headline, podium } from './results';
+import {
+  AWARDS,
+  cardAwards,
+  graphemes,
+  headline,
+  podium,
+  teamLook,
+  teamPodium,
+  teamResults,
+} from './results';
 import { GREETINGS, type Festive } from './season';
 
 export * from './results';
@@ -22,6 +31,9 @@ export * from './results';
  * A festive game (lib/season.ts) gets the festival's dressing, drawn with
  * paths like the rest: for Diwali, fairy lights across the top, a row of
  * lit diyas above the footer and a greeting stuck on by the headline.
+ *
+ * A team game's podium has the teams on it: blocks in the teams' colours
+ * (as fills only: the writing on them is ink), each with its emoji and name.
  */
 const CARD_W = 1080;
 const CARD_H = 1350;
@@ -109,6 +121,41 @@ const PODIUM_BIG: PodiumSize = {
   win: 96, other: 78, raise: 18, crownRoom: 30, name: 19, score: 15, col: 140,
 };
 
+/**
+ * A team game's podium, in the same three sizes: a block per team, its emoji
+ * on a disc sitting on the block's top edge, the name and score on the block.
+ */
+interface TeamPodiumSize {
+  /** Disc sizes: the winner's, and everyone else's. */
+  win: number;
+  other: number;
+  /** How much higher the winner's block stands. */
+  raise: number;
+  /** Room above the winner's disc for the crown. */
+  crownRoom: number;
+  name: number;
+  score: number;
+  /** The widest a block may be (two teams get wider ones), and the gap between blocks. */
+  block: number;
+  gap: number;
+}
+const TEAM_SMALL: TeamPodiumSize = {
+  win: 40, other: 34, raise: 10, crownRoom: 14, name: 13, score: 11.5, block: 128, gap: 10,
+};
+const TEAM_ROOMY: TeamPodiumSize = {
+  win: 58, other: 50, raise: 14, crownRoom: 20, name: 16, score: 13.5, block: 130, gap: 12,
+};
+const TEAM_BIG: TeamPodiumSize = {
+  win: 72, other: 62, raise: 18, crownRoom: 25, name: 16.5, score: 14.5, block: 130, gap: 12,
+};
+
+/** Which podium: small under a drawing, roomy beside awards, big when it is all there is. */
+type Stand = 'small' | 'roomy' | 'big';
+const PODIUMS: Record<Stand, PodiumSize> = { small: PODIUM_SMALL, roomy: PODIUM_ROOMY, big: PODIUM_BIG };
+const TEAM_PODIUMS: Record<Stand, TeamPodiumSize> = {
+  small: TEAM_SMALL, roomy: TEAM_ROOMY, big: TEAM_BIG,
+};
+
 interface ChipSize { h: number; emoji: number; title: number; detail: number; pad: number }
 const CHIP_SMALL: ChipSize = { h: 36, emoji: 17, title: 12.5, detail: 11, pad: 9 };
 const CHIP_ROOMY: ChipSize = { h: 50, emoji: 26, title: 16, detail: 13.5, pad: 12 };
@@ -120,6 +167,8 @@ interface Parts {
   best: BestDrawing | null;
   art: CanvasImageSource | null;
   top: SummaryPlayer[];
+  /** A team game's podium (the best three teams, best first), instead of the players'. */
+  teams: TeamResult[] | null;
   chips: Chip[];
   mascot: HTMLImageElement | null;
   festive: Festive;
@@ -146,6 +195,7 @@ export async function renderShareCard(input: {
   const festive = input.festive ?? null;
   const title = headline(summary, youId);
   const top = podium(summary);
+  const teams = teamResults(summary) ? teamPodium(summary) : null;
   const names = new Map(summary.players.map((p) => [p.id, p.name]));
   const chips = cardAwards(summary).map(
     (a): Chip => ({
@@ -163,7 +213,7 @@ export async function renderShareCard(input: {
     festive ? GREETINGS[festive] : '',
     title,
     summary.best ? `${summary.best.word} drawn by ${summary.best.drawerName}` : '',
-    ...top.map((p) => p.name),
+    ...(teams ?? top).map((p) => p.name),
     ...chips.map((c) => `${c.title} ${c.name} ${c.value}`),
   ].join(' ');
 
@@ -187,7 +237,7 @@ export async function renderShareCard(input: {
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('No canvas to draw the share card on');
       ctx.scale(S, S);
-      paint(ctx, { title, best, art, top, chips, mascot, festive });
+      paint(ctx, { title, best, art, top, teams, chips, mascot, festive });
       return await toPng(canvas);
     } finally {
       // iOS keeps a canvas's memory until it is shrunk, and caps the total.
@@ -279,7 +329,8 @@ function paint(ctx: CanvasRenderingContext2D, p: Parts): void {
   if (p.best) {
     // The drawing is the hero: it takes whatever height the rest leaves.
     const chipsH = p.chips.length ? 8 + CHIP_SMALL.h + 3 : 0;
-    const below = CAPTION_DROP + 10 + podiumHeight(PODIUM_SMALL) + chipsH + 10;
+    const standH = standHeight(ctx, p, 'small');
+    const below = CAPTION_DROP + 10 + standH + chipsH + 10;
     // The greeting gets a band of its own above the drawing: stuck on the
     // panel's corner it would hide whatever was drawn there.
     const gw = greeting ? greetingWidth(ctx, greeting) : 0;
@@ -304,8 +355,8 @@ function paint(ctx: CanvasRenderingContext2D, p: Parts): void {
     // The caption may stick out past the drawing: the word is the joke.
     caption(ctx, p.best, W / 2, y + ph, inner);
     y += ph + CAPTION_DROP + 10 + extra;
-    drawPodium(ctx, p.top, y, PODIUM_SMALL);
-    y += podiumHeight(PODIUM_SMALL) + 8 + extra;
+    drawStand(ctx, p, y, 'small');
+    y += standH + 8 + extra;
     if (p.chips.length) drawChips(ctx, p.chips, y, CHIP_SMALL, false);
     return;
   }
@@ -318,14 +369,27 @@ function paint(ctx: CanvasRenderingContext2D, p: Parts): void {
     greetingSticker(ctx, greeting, W / 2, y + 6 + rise, gw);
     y += 6 + 2 * rise + 3;
   }
-  const z = p.chips.length ? PODIUM_ROOMY : PODIUM_BIG;
+  const z: Stand = p.chips.length ? 'roomy' : 'big';
   const n = p.chips.length;
   const chipsH = n ? n * CHIP_ROOMY.h + (n - 1) * 12 + 3 : 0;
-  const gap = Math.max(12, (floor - y - podiumHeight(z) - chipsH) / (n ? 3 : 2));
+  const standH = standHeight(ctx, p, z);
+  const gap = Math.max(12, (floor - y - standH - chipsH) / (n ? 3 : 2));
   y += gap;
-  drawPodium(ctx, p.top, y, z);
-  y += podiumHeight(z) + gap;
+  drawStand(ctx, p, y, z);
+  y += standH + gap;
   if (n) drawChips(ctx, p.chips, y, CHIP_ROOMY, true);
+}
+
+/** How tall the podium is: the players', or a team game's teams'. */
+function standHeight(ctx: CanvasRenderingContext2D, p: Parts, z: Stand): number {
+  return p.teams
+    ? layoutTeams(ctx, p.teams, 0, TEAM_PODIUMS[z]).height
+    : podiumHeight(PODIUMS[z]);
+}
+
+function drawStand(ctx: CanvasRenderingContext2D, p: Parts, y: number, z: Stand): void {
+  if (p.teams) drawTeamPodium(ctx, p.teams, y, TEAM_PODIUMS[z]);
+  else drawPodium(ctx, p.top, y, PODIUMS[z]);
 }
 
 /* ------------------------------------------------------------ the pieces */
@@ -566,6 +630,162 @@ function drawPodium(
   });
 }
 
+/** Where a team's block stands, and its name as it fits the block. */
+interface TeamBlock {
+  team: TeamResult;
+  /** Won it: raised and crowned. */
+  first: boolean;
+  /** The block's centre line, its top edge (where its disc sits) and its width. */
+  cx: number;
+  top: number;
+  w: number;
+  /** The disc's size. */
+  d: number;
+  lines: string[];
+}
+
+/** The team podium's blocks from `y` down: one layout for measuring and drawing. */
+function layoutTeams(
+  ctx: CanvasRenderingContext2D,
+  teams: TeamResult[],
+  y: number,
+  z: TeamPodiumSize,
+): { blocks: TeamBlock[]; blockH: number; rows: number; height: number } {
+  // Second, first, third, as on a real podium.
+  const order = [teams[1], teams[0], teams[2]].filter((t): t is TeamResult => t !== undefined);
+  const n = order.length;
+  const w = Math.min(n === 2 ? z.block * 1.3 : z.block, (W - 2 * PAD - (n - 1) * z.gap) / n);
+  ctx.font = body(800, z.name);
+  const lines = order.map((t) => nameLines(ctx, t.name, w - 2 * TEAM_PAD));
+  // Every block as tall as the tallest name needs, so they line up.
+  const rows = Math.max(1, ...lines.map((l) => l.length));
+  const blockH = teamTextTop(z) + rows * teamLine(z) + z.score * 1.3 + 8;
+  const blocks = order.map((team, i): TeamBlock => {
+    const first = team.rank === 1 && team.score > 0;
+    return {
+      team,
+      first,
+      cx: W / 2 + (i - (n - 1) / 2) * (w + z.gap),
+      top: y + z.crownRoom + z.win / 2 + (first ? 0 : z.raise),
+      w,
+      d: first ? z.win : z.other,
+      lines: lines[i] ?? [],
+    };
+  });
+  // The lower blocks' hard shadow is the bottom.
+  return { blocks, blockH, rows, height: z.crownRoom + z.win / 2 + z.raise + blockH + 3 };
+}
+
+/** A block's inner margin, either side of the name. */
+const TEAM_PAD = 9;
+/** Where a block's writing starts below its top edge: clear of the biggest disc. */
+const teamTextTop = (z: TeamPodiumSize) => z.win / 2 + 3;
+const teamLine = (z: TeamPodiumSize) => z.name * 1.18;
+
+/**
+ * A team's name on at most two lines, each within `max`, set as the results
+ * screen sets it: broken between words where it can be, with the two lines
+ * as even as they go, and inside a word only when one is wider than a whole
+ * line (names run to 20 characters, and three blocks are narrow).
+ */
+function nameLines(ctx: CanvasRenderingContext2D, name: string, max: number): string[] {
+  const text = name.replace(/\s+/g, ' ').trim();
+  if (fits(ctx, text, max)) return [text];
+  const words = text.split(' ');
+  const best =
+    evenest(ctx, cuts(words, ' '), max) ??
+    (words.some((w) => !fits(ctx, w, max)) ? evenest(ctx, cuts(graphemes(text), ''), max) : null);
+  if (best) return best;
+  // Too long for two lines however it breaks: a full first line, the rest shortened.
+  const first = lineStart(ctx, text, max);
+  const rest = text.slice(first.length).trim();
+  return rest ? [first, ellipsize(ctx, rest, max)] : [first];
+}
+
+/** Every way to split `parts` (words, or characters) into two lines. */
+function cuts(parts: string[], sep: string): [string, string][] {
+  return parts
+    .slice(1)
+    .map((_, i): [string, string] => [
+      parts.slice(0, i + 1).join(sep).trimEnd(),
+      parts.slice(i + 1).join(sep).trimStart(),
+    ])
+    .filter(([a, b]) => a !== '' && b !== '');
+}
+
+/** Of these two-line splits, the one whose longer line is the shortest, if any fits `max`. */
+function evenest(ctx: CanvasRenderingContext2D, splits: [string, string][], max: number): string[] | null {
+  let best: string[] | null = null;
+  let widest = Infinity;
+  for (const lines of splits) {
+    if (!lines.every((line) => fits(ctx, line, max))) continue;
+    const w = Math.max(...lines.map((line) => ctx.measureText(line).width));
+    if (w < widest) {
+      best = lines;
+      widest = w;
+    }
+  }
+  return best;
+}
+
+/** What of `text` starts a line `max` wide: whole words, or as much of a word too long for it as fits. */
+function lineStart(ctx: CanvasRenderingContext2D, text: string, max: number): string {
+  let line = '';
+  for (const word of text.split(' ')) {
+    const next = line ? `${line} ${word}` : word;
+    if (!fits(ctx, next, max)) break;
+    line = next;
+  }
+  if (line) return line;
+  const chars = graphemes(text);
+  for (const g of chars) {
+    if (!fits(ctx, line + g, max)) break;
+    line += g;
+  }
+  // A character at the least, however narrow the line.
+  return line || (chars[0] ?? '');
+}
+
+/**
+ * The teams on their blocks, second, first and third: each block in its
+ * team's colour with ink writing (the colours fail as text), the emoji on a
+ * paper disc on its top edge. The winner's block stands higher, crowned;
+ * medals take points, so a game nobody scored in crowns nobody.
+ */
+function drawTeamPodium(
+  ctx: CanvasRenderingContext2D,
+  teams: TeamResult[],
+  y: number,
+  z: TeamPodiumSize,
+): void {
+  const { blocks, blockH, rows } = layoutTeams(ctx, teams, y, z);
+  for (const b of blocks) {
+    const look = teamLook(b.team.id);
+    sticker(ctx, b.cx - b.w / 2, b.top, b.w, blockH, 14, look.colour, 3, 3);
+    badge(ctx, look.emoji, PAPER, b.cx, b.top, b.d);
+    if (b.first) {
+      ctx.save();
+      ctx.translate(b.cx, b.top - b.d / 2 - b.d * 0.1);
+      ctx.rotate(rad(-12));
+      emoji(ctx, '👑', 0, 0, b.d * 0.46);
+      ctx.restore();
+    }
+    const medal = b.team.score > 0 ? MEDALS[b.team.rank - 1] : undefined;
+    if (medal) emoji(ctx, medal, b.cx + b.d * 0.34, b.top + b.d * 0.34, b.d * 0.5);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = INK;
+    ctx.font = body(800, z.name);
+    // Name and score keep together, in the middle of the room a two-line name would take.
+    const textTop = b.top + teamTextTop(z) + ((rows - b.lines.length) * teamLine(z)) / 2;
+    b.lines.forEach((line, i) => ctx.fillText(line, b.cx, textTop + teamLine(z) * (i + 0.8)));
+    ctx.font = body(700, z.score);
+    const score = `${b.team.score} ${b.team.score === 1 ? 'point' : 'points'}`;
+    ctx.fillText(score, b.cx, textTop + b.lines.length * teamLine(z) + z.score);
+  }
+}
+
 /** An avatar as the game shows it: the emoji on its backdrop colour, in an ink ring. */
 function disc(
   ctx: CanvasRenderingContext2D,
@@ -575,9 +795,21 @@ function disc(
   d: number,
 ): void {
   const k = avatarSlot(avatar);
+  badge(ctx, AVATARS[k] ?? '', BACKDROPS[k] ?? PAPER, cx, cy, d);
+}
+
+/** An emoji on a filled disc, in an ink ring. */
+function badge(
+  ctx: CanvasRenderingContext2D,
+  ch: string,
+  fill: string,
+  cx: number,
+  cy: number,
+  d: number,
+): void {
   ctx.beginPath();
   ctx.arc(cx, cy, d / 2, 0, Math.PI * 2);
-  ctx.fillStyle = BACKDROPS[k] ?? PAPER;
+  ctx.fillStyle = fill;
   ctx.fill();
   // Inside the disc, as a CSS border is.
   const ring = d >= 56 ? 3 : 2.5;
@@ -586,7 +818,7 @@ function disc(
   ctx.lineWidth = ring;
   ctx.strokeStyle = INK;
   ctx.stroke();
-  emoji(ctx, AVATARS[k] ?? '', cx, cy, d * 0.58);
+  emoji(ctx, ch, cx, cy, d * 0.58);
 }
 
 /** The award chips: one row under a drawing, a column of bigger ones without. */

@@ -51,12 +51,18 @@ export const Chat = memo(function Chat({
         }}
       >
         {messages.length === 0 && <div className="msg muted">No messages yet.</div>}
-        {messages.map((m) => (
-          <div key={m.id} className={`msg ${m.channel} tone-${m.tone ?? 'neutral'}`}>
-            {m.playerName && <span className="who">{m.playerName}:</span>}
-            <span>{m.text}</span>
-          </div>
-        ))}
+        {messages.map((m) => {
+          // A team game's side chat, which the drawing team never sees: told
+          // apart from their guesses at a glance.
+          const side = m.channel === 'watchers';
+          return (
+            <div key={m.id} className={`msg ${m.channel} tone-${m.tone ?? 'neutral'}${side ? ' game-team-watch' : ''}`}>
+              {side && <span className="game-team-eyes" role="img" aria-label="Secret:">👀</span>}
+              {m.playerName && <span className="who">{m.playerName}:</span>}
+              <span>{m.text}</span>
+            </div>
+          );
+        })}
       </div>
 
       <form
