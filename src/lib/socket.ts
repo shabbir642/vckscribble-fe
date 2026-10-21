@@ -4,6 +4,7 @@ import {
   type ClientToServerEvents,
   type ServerToClientEvents,
 } from '../generated/contract';
+import { directVerdict } from './route';
 import { SERVER_URL } from './server';
 
 export type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -45,18 +46,22 @@ const directBase = Number((import.meta.env['VITE_DIRECT_SOCKET_PORT'] as string 
 const directAvailable =
   Boolean(directHost) && window.location.protocol === 'https:' && SERVER_URL === window.location.origin;
 
-const BLOCKED_KEY = 'vck:direct-blocked';
+/** Until when (epoch ms) this browser skips the direct route. */
+const BLOCKED_KEY = 'vck:direct-blocked-until';
+/** A network where the direct port never connected (an office firewall). */
 const BLOCKED_FOR_MS = 24 * 3600_000;
+/** A network where it connected but lost or delayed replies: routes recover. */
+const LOSSY_FOR_MS = 3 * 3600_000;
 function directBlocked(): boolean {
   try {
-    return Date.now() - Number(localStorage.getItem(BLOCKED_KEY) ?? 0) < BLOCKED_FOR_MS;
+    return Date.now() < Number(localStorage.getItem(BLOCKED_KEY) ?? 0);
   } catch {
     return false;
   }
 }
-function rememberBlocked(): void {
+function rememberBlocked(forMs: number): void {
   try {
-    localStorage.setItem(BLOCKED_KEY, String(Date.now()));
+    localStorage.setItem(BLOCKED_KEY, String(Date.now() + forMs));
   } catch {
     /* only costs a slower first connect next time */
   }
@@ -82,8 +87,9 @@ export const socket: GameSocket = io(target().uri, {
   path: target().path,
   transports: direct ? ['websocket'] : ['websocket', 'polling'],
   // A firewall that silently drops the direct port would otherwise hold the
-  // first connect for the default 20 s before falling back.
-  timeout: direct ? 5000 : 20000,
+  // first connect for the default 20 s before falling back; a healthy direct
+  // connect takes well under a second.
+  timeout: direct ? 3000 : 20000,
 });
 
 /*
@@ -191,18 +197,84 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('online', reconnectNow);
 
+/* -------------------------------------------------------- route quality */
+
+/*
+ * The direct route can connect and still be unusable (see directVerdict), so
+ * it is tested as soon as it connects, watched while it stays up, and given up
+ * for the proxied route as soon as it proves lossy or slow.
+ */
+
+/** Two quick pings on connecting (the server allows three in a burst). */
+const PROBES = 2;
+const PROBE_GAP_MS = 400;
+const PROBE_TIMEOUT_MS = 1500;
+/** The proxied route is 150 to 400 ms from India; direct should beat it easily. */
+const PROBE_SLOW_MS = 600;
+/** While playing: the last few of netReport's pings (one every 10 s). */
+const WATCH = 4;
+const WATCH_SLOW_MS = 800;
+
+let directWorked = false;
+let watched: (number | null)[] = [];
+
+/** Off the direct route for the rest of the visit, and for `rememberFor` ms after. */
+function leaveDirect(rememberFor: number): void {
+  if (!direct) return;
+  direct = false;
+  watched = [];
+  aim();
+  socket.io.opts.transports = ['websocket', 'polling'];
+  socket.io.timeout(20000);
+  if (rememberFor > 0) rememberBlocked(rememberFor);
+  // Connected on a bad route: move now. Otherwise the manager's own next
+  // attempt goes the new way.
+  if (socket.connected) {
+    socket.disconnect();
+    socket.connect();
+  }
+}
+
+const pingOnce = (timeoutMs: number) =>
+  new Promise<number | null>((done) => {
+    const t0 = performance.now();
+    socket.timeout(timeoutMs).emit('net:ping', {}, (err: Error | null) =>
+      done(err ? null : performance.now() - t0),
+    );
+  });
+
+async function probeDirect(): Promise<void> {
+  const results: (number | null)[] = [];
+  for (let i = 0; i < PROBES; i++) {
+    if (!direct || !socket.connected) return;
+    results.push(await pingOnce(PROBE_TIMEOUT_MS));
+    if (i < PROBES - 1) await new Promise((next) => setTimeout(next, PROBE_GAP_MS));
+  }
+  if (direct && socket.connected && directVerdict(results, PROBE_SLOW_MS, 0) === 'bad') {
+    leaveDirect(LOSSY_FOR_MS);
+  }
+}
+
+/** netReport's pings while playing: a route that turns bad mid-game is left too. */
+export function noteRoundTrip(rtt: number | null): void {
+  if (!direct || !socket.connected) return;
+  watched = [...watched, rtt].slice(-WATCH);
+  if (watched.length === WATCH && directVerdict(watched, WATCH_SLOW_MS, 1) === 'bad') {
+    leaveDirect(LOSSY_FOR_MS);
+  }
+}
+
 if (direct) {
-  let directWorked = false;
   socket.on('connect', () => {
-    if (direct) directWorked = true;
+    if (!direct) return;
+    directWorked = true;
+    watched = [];
+    // Hidden tabs throttle timers; their pings would measure the throttle.
+    if (!document.hidden) void probeDirect();
   });
   socket.on('connect_error', () => {
-    if (!direct) return;
-    // The manager reconnects on its own; the next attempt goes through the origin.
-    direct = false;
-    aim();
-    socket.io.opts.transports = ['websocket', 'polling'];
-    socket.io.timeout(20000);
-    if (!directWorked) rememberBlocked();
+    // The manager reconnects on its own; the next attempt goes through the
+    // origin. A port that never connected is remembered for a day.
+    leaveDirect(directWorked ? 0 : BLOCKED_FOR_MS);
   });
 }

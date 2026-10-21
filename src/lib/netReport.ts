@@ -1,4 +1,4 @@
-import { isDirect, socket } from './socket';
+import { isDirect, noteRoundTrip, socket } from './socket';
 
 /**
  * Measures what this player's connection is actually like and tells the
@@ -24,8 +24,10 @@ function ping(): void {
   if (!socket.connected || document.hidden) return;
   const t0 = performance.now();
   socket.timeout(LOST_AFTER_MS).emit('net:ping', {}, (err: Error | null) => {
-    if (err) lost++;
-    else rtts.push(performance.now() - t0);
+    const rtt = err ? null : performance.now() - t0;
+    if (rtt === null) lost++;
+    else rtts.push(rtt);
+    noteRoundTrip(rtt);
   });
 }
 
