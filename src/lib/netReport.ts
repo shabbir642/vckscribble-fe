@@ -1,10 +1,11 @@
-import { isDirect, noteRoundTrip, socket } from './socket';
+import { currentRoute, noteRoundTrip, skippedRoutes, socket } from './socket';
 
 /**
  * Measures what this player's connection is actually like and tells the
- * server once a minute: round-trip times, unanswered pings, reconnects. The
- * server only sees its own side; without this nobody would know whether real
- * players feel lag, or how many networks block the direct game port.
+ * server once a minute: round-trip times, unanswered pings, reconnects, the
+ * route it takes and the faster ones it passes over. The server only sees
+ * its own side; without this nobody would know whether real players feel
+ * lag, or how many networks block the fast routes.
  *
  * Only while the tab is visible — a background tab's timers are throttled and
  * would report nonsense — and only when there is something to say.
@@ -31,10 +32,18 @@ function ping(): void {
   });
 }
 
+/** The device's own name for its network, where the browser says (Chrome on Android). */
+function link(): string | undefined {
+  const type = (navigator as Navigator & { connection?: { type?: unknown } }).connection?.type;
+  return typeof type === 'string' && /^[a-z]{1,16}$/.test(type) ? type : undefined;
+}
+
 function report(): void {
   if (!socket.connected || (rtts.length === 0 && lost === 0 && reconnects === 0)) return;
   const sorted = [...rtts].sort((a, b) => a - b);
   const at = (p: number) => Math.round(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? 0);
+  const route = currentRoute();
+  const kind = link();
   socket.emit('net:report', {
     rttP50: at(0.5),
     rttP95: at(0.95),
@@ -42,7 +51,10 @@ function report(): void {
     samples: sorted.length,
     lost,
     reconnects,
-    direct: isDirect(),
+    direct: route === 'direct',
+    route,
+    skipped: skippedRoutes(),
+    ...(kind ? { link: kind } : {}),
   });
   rtts = [];
   lost = 0;
